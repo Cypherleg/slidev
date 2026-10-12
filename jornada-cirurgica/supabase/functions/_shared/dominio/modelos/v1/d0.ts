@@ -251,7 +251,7 @@ export function modeloTimeOut(): ModeloChecklist {
             hardStop: 'HS_LIO_TIME_OUT',
             ajuda: '"Não" = divergência no Time Out: a cirurgia não começa; quase-evento; resolução escrita do cirurgião.',
           }),
-          item(TO.olhoUnicoPreceptor, 'Olho único: operado pelo preceptor (residente não opera olho único)', 'confirmacao', CC, 'POP §11 e §14 (decidido em 12/10/2026)', {
+          item(TO.olhoUnicoPreceptor, 'Olho único: operado pelo preceptor (residente não opera olho único)', 'confirmacao', CC, 'POP §11 e §14 (item decidido)', {
             obrigatorio: false,
             exigidoQuando: { ...CONDICAO_OLHO_UNICO },
           }),

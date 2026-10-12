@@ -52,7 +52,7 @@ describe('D-7 inteiro', () => {
       expect(e.autorId).toBeTruthy()
       expect(e.autorPapel).toBeTruthy()
       expect(e.aparelhoId).toBe('aparelho-teste')
-      if (e.tipo === 'checklist.item_respondido') expect(e.versaoModelo).toBe('pop-0.4/1')
+      if (e.tipo === 'checklist.item_respondido') expect(e.versaoModelo).toBe('pop-0.4/2')
     }
   })
 

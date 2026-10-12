@@ -101,11 +101,17 @@ function semTitulo(nome: string): string {
   return nome.replace(/^\s*(dr|dra)\.?\s+/i, '').trim()
 }
 
+/** [S] Adaptação gramatical mínima do texto aprovado: cadastro com "Dra." → "A Dra. <nome>". */
+function tratamentoCirurgiao(nomeCadastro: string): 'O Dr.' | 'A Dra.' {
+  return /^\s*dra\.?\s+/i.test(nomeCadastro) ? 'A Dra.' : 'O Dr.'
+}
+
 /** TCLE — envio no D-7 (texto aprovado; o nome da concierge vem do usuário que envia). */
 export function textoTcleEnvio(d: { nomePaciente: string; nomeConcierge: string; olho: Olho; link: string; nomeCirurgiao: string }): TextoMensagem {
   const cirurgiao = semTitulo(d.nomeCirurgiao)
+  const tratamento = tratamentoCirurgiao(d.nomeCirurgiao)
   return {
-    texto: `Olá, ${d.nomePaciente}. Aqui é a ${d.nomeConcierge}, do hospital OFTA VITTA. Segue o vídeo que explica o termo de consentimento da sua cirurgia de catarata do olho ${olhoMinusculo(d.olho)}. Depois de assistir, abra o link para ler e assinar pelo celular: ${d.link}. Se tiver qualquer dúvida sobre a cirurgia, não assine ainda e me avise. O Dr. ${cirurgiao} esclarece antes.`,
+    texto: `Olá, ${d.nomePaciente}. Aqui é a ${d.nomeConcierge}, do hospital OFTA VITTA. Segue o vídeo que explica o termo de consentimento da sua cirurgia de catarata do olho ${olhoMinusculo(d.olho)}. Depois de assistir, abra o link para ler e assinar pelo celular: ${d.link}. Se tiver qualquer dúvida sobre a cirurgia, não assine ainda e me avise. ${tratamento} ${cirurgiao} esclarece antes.`,
     modeloMeta: MODELOS_META.tcle_envio,
     parametros: { nome: d.nomePaciente, concierge: d.nomeConcierge, olho: olhoMinusculo(d.olho), link: d.link, cirurgiao },
   }

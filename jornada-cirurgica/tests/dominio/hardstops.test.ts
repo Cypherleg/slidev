@@ -116,6 +116,8 @@ describe('HS2 — biometria original ausente', () => {
     expect(e.codigo).toBe('HARD_STOP')
     expect(e.detalhes?.hardStops).toContain('HS2_BIOMETRIA_AUSENTE')
     expect(quaseEventos(sim, 'HS2_BIOMETRIA_AUSENTE')).toHaveLength(1)
+    // Indicador 4 conta só divergências de identidade, olho ou LIO: biometria ausente não é divergência.
+    expect(quaseEventos(sim, 'HS2_BIOMETRIA_AUSENTE')[0].dados).toMatchObject({ categoria: 'outro' })
   })
   it('resolve: reimpressa a biometria, o item respondido "sim" libera a conclusão', () => {
     const sim = new Simulador()
@@ -195,13 +197,25 @@ describe('HS5 — TCLE', () => {
     const r = sim.executar('conferente', { tipo: 'bloco.concluir', modelo: 'd2' })
     return { sim, r }
   }
-  it('dispara: no dia, TCLE não assinado bloqueia a admissão (e é quase-evento)', () => {
+  it('dispara na admissão (não na conclusão do D-2): TCLE não assinado bloqueia a admissão e é quase-evento', () => {
     const { sim, r } = disparar()
-    expect(r.eventos.some((e) => e.tipo === 'quase_evento.registrado' && (e.dados as { codigo?: string }).codigo === 'HS5_TCLE')).toBe(true)
+    // Antes do D0 é pendência (prazo-alvo D-2 [S]), não hard stop.
+    expect(r.eventos.some((e) => e.tipo === 'quase_evento.registrado')).toBe(false)
+    expect(abertos(sim)).not.toContain('HS5_TCLE')
+    expect(sim.visao('concierge').pendencias.some((p) => p.codigo === 'tcle.nao_assinado')).toBe(true)
     sim.agora = D0_INSTANTE
+    const r2 = sim.executar('enfermagem', { tipo: 'checklist.responder', modelo: 'admissao', respostas: [{ itemId: ADM.pa, valor: '12x8' }] })
+    expect(r2.eventos.some((e) => e.tipo === 'quase_evento.registrado' && (e.dados as { codigo?: string }).codigo === 'HS5_TCLE')).toBe(true)
     preencherBloco(sim, 'admissao')
     const e = sim.falha('enfermagem', { tipo: 'bloco.concluir', modelo: 'admissao' })
     expect(e.detalhes?.hardStops).toContain('HS5_TCLE')
+  })
+  it('dispara: "TCLE assinado no prontuário" = não', () => {
+    const sim = new Simulador()
+    ateD2(sim)
+    sim.agora = D0_INSTANTE
+    sim.executar('enfermagem', { tipo: 'checklist.responder', modelo: 'admissao', respostas: [{ itemId: ADM.tcle, valor: 'nao' }] })
+    expect(abertos(sim)).toContain('HS5_TCLE')
   })
   it('resolve: TCLE assinado registrado', () => {
     const { sim } = disparar()
@@ -213,12 +227,26 @@ describe('HS5 — TCLE', () => {
     sim.executar('enfermagem', { tipo: 'bloco.concluir', modelo: 'admissao' })
     expect(sim.estadoEpisodio).toBe('admitido')
   })
-  it('dispara também com dúvida não resolvida no Sign In', () => {
+  it('dúvida no Sign In: só fecha com resolução escrita do cirurgião', () => {
     const sim = new Simulador()
     ateD2(sim)
     admitir(sim)
     sim.executar('enfermagem', { tipo: 'checklist.responder', modelo: 'sign_in', respostas: [{ itemId: SI.consentimento, valor: 'nao' }] })
     expect(abertos(sim)).toContain('HS5_TCLE')
+    const hs = sim.visao('enfermagem').hardStops.find((h) => h.codigo === 'HS5_TCLE')!
+    expect(hs).toMatchObject({ exigeResolucaoEscrita: true, resolvivelPor: ['cirurgiao'] })
+    // Responder "sim" depois não fecha: a dúvida precisa da resolução escrita.
+    sim.executar('enfermagem', { tipo: 'checklist.responder', modelo: 'sign_in', respostas: [{ itemId: SI.consentimento, valor: 'sim' }] })
+    expect(abertos(sim)).toContain('HS5_TCLE')
+    expect(sim.falha('enfermagem', { tipo: 'hardstop.resolver', codigo: 'HS5_TCLE', resolucao: 'Paciente diz que entendeu.' }).codigo).toBe('SEM_PERMISSAO')
+    sim.executar('cirurgiao', { tipo: 'hardstop.resolver', codigo: 'HS5_TCLE', resolucao: 'Dúvida sobre o pós-operatório esclarecida pelo cirurgião.' })
+    expect(abertos(sim)).not.toContain('HS5_TCLE')
+  })
+  it('TCLE não assinado (parte por condição) não se resolve por texto', () => {
+    const { sim } = disparar()
+    sim.agora = D0_INSTANTE
+    preencherBloco(sim, 'admissao')
+    expect(sim.falha('cirurgiao', { tipo: 'hardstop.resolver', codigo: 'HS5_TCLE', resolucao: 'texto' }).codigo).toBe('VALIDACAO')
   })
 })
 
@@ -241,12 +269,14 @@ describe('HS6 — α-bloqueador ou anticoagulação sem conduta', () => {
     preencherBloco(sim, 'd2', { preferida: 'conferente' })
     sim.executar('conferente', { tipo: 'bloco.concluir', modelo: 'd2' })
     admitir(sim)
-    preencherBloco(sim, 'sign_in', { preferida: 'enfermagem', pular: [SI.condutaAlertas] })
+    preencherBloco(sim, 'sign_in', { preferida: 'enfermagem', pular: [SI.condutaAlertas, SI.midriatico] })
     return sim
   }
-  it('dispara: no Sign In, sem conduta escrita, o item e a conclusão ficam bloqueados', () => {
+  it('dispara: no Sign In, sem conduta escrita, o item, o midriático e a conclusão ficam bloqueados', () => {
     const sim = disparar()
     expect(abertos(sim)).toContain('HS6_SEM_CONDUTA_ALFA_ANTICOAG')
+    const em = sim.falha('enfermagem', { tipo: 'checklist.responder', modelo: 'sign_in', respostas: [{ itemId: SI.midriatico, valor: true }] })
+    expect(em.detalhes?.hardStops).toContain('HS6_SEM_CONDUTA_ALFA_ANTICOAG')
     expect(sim.falha('enfermagem', { tipo: 'checklist.responder', modelo: 'sign_in', respostas: [{ itemId: SI.condutaAlertas, valor: 'presente' }] }).codigo).toBe('HARD_STOP')
     expect(sim.falha('enfermagem', { tipo: 'checklist.responder', modelo: 'sign_in', respostas: [{ itemId: SI.condutaAlertas, valor: 'nao_se_aplica' }] }).codigo).toBe('HARD_STOP')
   })
@@ -255,6 +285,7 @@ describe('HS6 — α-bloqueador ou anticoagulação sem conduta', () => {
     expect(sim.falha('enfermagem', { tipo: 'alerta.conduta', alertaId: `d7:${D7.alfaBloqueador}`, conduta: 'x' }).codigo).toBe('SEM_PERMISSAO')
     sim.executar('cirurgiao', { tipo: 'alerta.conduta', alertaId: `d7:${D7.alfaBloqueador}`, conduta: 'Manter o remédio; materiais de íris disponíveis.' })
     expect(abertos(sim)).not.toContain('HS6_SEM_CONDUTA_ALFA_ANTICOAG')
+    sim.executar('enfermagem', { tipo: 'checklist.responder', modelo: 'sign_in', respostas: [{ itemId: SI.midriatico, valor: true }] })
     sim.executar('enfermagem', { tipo: 'checklist.responder', modelo: 'sign_in', respostas: [{ itemId: SI.condutaAlertas, valor: 'presente' }] })
     sim.executar('enfermagem', { tipo: 'bloco.concluir', modelo: 'sign_in', leitorId: MEMBROS.enfermagem.id, confirmadorId: MEMBROS.circulante.id })
     expect(sim.estadoEpisodio).toBe('sign_in_concluido')
@@ -309,6 +340,8 @@ describe('HS8 — troca de LIO no dia D', () => {
     const e = sim.falha('circulante', { tipo: 'lente.time_out', leitura: { modelo: 'Lente Nova Teste', dioptria: 22, cilindro: null, eixo: null } })
     expect(e.codigo).toBe('HARD_STOP')
     expect(e.detalhes?.hardStops).toContain('HS8_TROCA_LIO_D0')
+    // Troca decidida pelo cirurgião não é divergência interceptada (indicador 4).
+    expect(quaseEventos(sim, 'HS8_TROCA_LIO_D0').map((q) => (q.dados as { categoria?: string }).categoria)).toEqual(['outro'])
   })
   it('resolve: novo plano, checkpoint 1 e checkpoint 2 refeitos por duas pessoas', () => {
     const sim = disparar()

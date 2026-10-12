@@ -65,7 +65,7 @@ export function calcularIdentificacao(est: EstadoInterno): IdentificacaoVisao {
   if (homonimo) extenso.push(TEXTO_HOMONIMO)
   else if (parecidos.length) extenso.push(TEXTO_NOME_PARECIDO)
   if (ehSim(est, 'd7', D7.demencia)) {
-    const rep = valor(est, 'd7', D7.representante) as ValorPessoa | undefined
+    const rep = valorAplicavel(est, 'd7', D7.representante) as ValorPessoa | undefined
     extenso.push(textoDeficitCognitivo(rep && typeof rep === 'object' ? rep.nome : null))
   }
   // 2º olho: pelo registro do painel ou pela resposta do D-7 (com a data informada do 1º olho).

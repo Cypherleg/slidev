@@ -103,11 +103,11 @@ describe('utilitários', () => {
 describe('modelos v1 (POP v0.4)', () => {
   const modelos = modelosPadrao()
 
-  it('versão pop-0.4/1, todos os modelos, ids únicos, fonte em cada item, papéis dentro da matriz', () => {
+  it('versão pop-0.4/2, todos os modelos, ids únicos, fonte em cada item, papéis dentro da matriz', () => {
     expect(Object.keys(modelos).sort()).toEqual([...ORDEM_MODELOS].sort())
     for (const id of ORDEM_MODELOS) {
       const m = modelos[id]
-      expect(m.versao).toBe('pop-0.4/1')
+      expect(m.versao).toBe('pop-0.4/2')
       const itens = m.secoes.flatMap((s) => s.itens)
       expect(new Set(itens.map((i) => i.id)).size).toBe(itens.length)
       for (const i of itens) {
@@ -116,7 +116,11 @@ describe('modelos v1 (POP v0.4)', () => {
         for (const p of i.papeis) expect(PAPEIS_POR_MODELO[id], `${id}.${i.id}`).toContain(p)
         if (i.tipo === 'opcao' || i.tipo === 'multipla') expect(i.opcoes?.length).toBeGreaterThan(1)
         for (const d of i.depoisDe ?? []) expect(itens.some((x) => x.id === d)).toBe(true)
-        if (i.exigidoQuando && 'itemId' in i.exigidoQuando) expect(itens.some((x) => x.id === (i.exigidoQuando as { itemId: string }).itemId)).toBe(true)
+        if (i.exigidoQuando && 'itemId' in i.exigidoQuando) {
+          const ref = i.exigidoQuando.itemId
+          const [mod, alvo] = ref.includes(':') ? (ref.split(':') as [ModeloId, string]) : [id, ref]
+          expect(modelos[mod].secoes.flatMap((x) => x.itens).some((x) => x.id === alvo), `${id}.${i.id} → ${ref}`).toBe(true)
+        }
       }
       for (const p of m.papeisConclusao) expect(PAPEIS_POR_MODELO[id]).toContain(p)
     }
@@ -163,9 +167,9 @@ describe('modelos v1 (POP v0.4)', () => {
     const base = modelos.anestesia.secoes.flatMap((s) => s.itens)
     expect(base.map((i) => i.id)).toEqual(['AN.jejum_medicacoes', 'AN.monitorizacao_acesso', 'AN.liberacao_recuperacao'])
     const comExtras = modelosPadrao({ itensAnestesiaExtras: [{ id: 'via_aerea', texto: 'Item extra de teste' }] }).anestesia
-    expect(comExtras.versao).toMatch(/^pop-0\.4\/1\+anest\.[0-9a-f]{8}$/)
+    expect(comExtras.versao).toMatch(/^pop-0\.4\/2\+anest\.[0-9a-f]{8}$/)
     expect(comExtras.secoes[1].itens).toMatchObject([{ id: 'EXTRA.via_aerea', texto: 'Item extra de teste', papeis: ['anestesista'] }])
-    expect(versoesDosModelos(modelos).d7).toBe('pop-0.4/1')
+    expect(versoesDosModelos(modelos).d7).toBe('pop-0.4/2')
   })
 
   it('alta: critérios do item 4.5 separados; alta médica pelo cirurgião; retornos D1 e D15 com data e hora', () => {

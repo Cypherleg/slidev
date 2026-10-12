@@ -40,3 +40,14 @@ Itens marcados **[S]** são interpretações do agente de código, não regras d
 | R7 | 12/10/2026 | [S] Avisos à família suspensos (inclusive o de atraso) enquanto houver intercorrência, hard stop aberto, suspensão ou cancelamento. | Briefing §7. | proposta |
 
 As interpretações específicas de cada módulo estão em `docs/notas-agentes/*.md` e são consolidadas no `PLANO.md`, seção "Pendências e interpretações".
+
+## Correções das revisões independentes (12/10/2026)
+
+| # | Data | Decisão | Motivo | Estado |
+| --- | --- | --- | --- | --- |
+| S1 | 12/10/2026 | [S] Checkpoint 2 só com o **login da própria conferente** (sem troca por PIN), e recusado se o usuário do login consultou ou registrou o checkpoint 1 do episódio. | A troca por PIN no aparelho de quem fez o checkpoint 1 enfraquecia a independência. | proposta |
+| S2 | 12/10/2026 | Confirmação da leitura em voz alta (Sign In, Time Out) por **token próprio, de uso único**, preso ao episódio e ao bloco, válido por 5 minutos; quem conclui o bloco é quem leu. | O token de troca de usuário servia para outras ações por 15 minutos. | proposta |
+| S3 | 12/10/2026 | Limites de PIN (5 falhas em 15 min por alvo) e de consulta de CPF (por hora) serializados no banco; tentativa registrada antes da verificação. | Tentativas simultâneas burlavam o limite. | proposta |
+| S4 | 12/10/2026 | [S] Mensagem pendente há mais de 60 minutos (configurável) ou de outro dia é cancelada e nunca sai. | Evita aviso de "cirurgia começou" horas depois, se o envio parar e voltar. | proposta |
+| S5 | 12/10/2026 | Listas (dia, busca, pendências, véspera, alertas) obedecem à mesma filtragem por papel da visão do episódio. | Evitava que a segunda conferente visse informação derivada do checkpoint 1. | proposta |
+| F1 | 12/10/2026 | Modelos de checklist passam a `pop-0.4/2` após a revisão de fidelidade; episódios guardam a versão usada. | Correções de fidelidade (ver `notas-agentes/dominio.md` §7). | proposta |

@@ -102,6 +102,14 @@ Resultado dos testes e da verificação ponta a ponta: seção 8.
 17. O nome da concierge que assina a mensagem do TCLE vem do usuário que envia ou é fixo?
 18. A segunda conferente pode ver a foto do plano assinado? (Hoje: não; ela parte do papel original.)
 
+19. Erro do olho no quiz: ligação **no mesmo dia** (§6, pergunta 1) ou **em até 1 dia útil** (§6, "Se reprovar")? O POP diz os dois; implementado "mesmo dia".
+20. Hard stop recusado por regra de ordem (sítio não marcado antes do midriático) deve ser registrado como quase-evento? O §13.9 diz "todo hard stop acionado"; hoje a ação é recusada e nada é gravado.
+21. Qual texto enviar quando só os materiais de preparo podem sair (TCLE retido até realinhar a expectativa, POP §1.F)? Sem texto aprovado, nada é enviado.
+22. Mudança de medicação no D-2 tratada como ALERTA (comunicar ao cirurgião antes de concluir o D-2). Confirma?
+23. Quase-evento registrado à mão deve ter categoria obrigatória (identidade, olho, LIO, outro)? Sem categoria, não entra no indicador 4.
+24. A funcionária A do checkpoint 1 (no POP, "administrativo de materiais") precisa ter o papel de concierge no painel. Confirma?
+25. Validade das mensagens na fila: avisos pendentes há mais de 60 minutos ou de outro dia são cancelados e nunca saem. Qual prazo?
+
 ### Pendências do POP que afetam o software
 
 | Pendência (colchete no POP) | Onde aparece | Bloqueia qual fase |
@@ -129,6 +137,13 @@ Resultado dos testes e da verificação ponta a ponta: seção 8.
 Total: 368 testes, todos passando. Verificação de tipos e build da interface sem erros.
 
 Não testado aqui: Deno real (as Edge Functions foram verificadas com tipos simulados), Postgres 17 e o usuário da `SUPABASE_DB_URL` do Supabase, Datasigh real, Meta real.
+
+### Revisões independentes
+
+Depois da construção, dois revisores independentes auditaram o código:
+
+- **Segurança e privacidade:** nada crítico; não há caminho para a segunda conferente ver o checkpoint 1; todo SQL roda sob papel próprio. Oito defeitos de gravidade média ou baixa (cadastro como oráculo de CPF, limites burláveis por concorrência, token de confirmação reaproveitável, listas com informação derivada do checkpoint 1, conferência cega por sessão, e-mail confirmado, fila sem validade, corpo lido antes da autenticação) foram corrigidos, cada um com teste.
+- **Fidelidade ao POP:** 24 achados, 5 de gravidade alta (remédio que muda depois do D-7 escapava das regras; correção de resposta apagava alerta; TCLE de outro olho na admissão; 2º olho sem histórico; itens de "confirmação" sem como registrar divergência). Todos corrigidos no motor de regras; o que exigia decisão clínica virou pergunta (seção 7, itens 19 a 25) ou interpretação [S].
 
 ### Interpretações a confirmar
 

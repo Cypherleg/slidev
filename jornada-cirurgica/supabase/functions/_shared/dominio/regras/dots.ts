@@ -55,10 +55,10 @@ export function calcularDots(est: EstadoInterno): Dot[] {
 
   // M — Membro restrito: fístula, mastectomia ou esvaziamento axilar.
   const motivosM: string[] = []
-  const fistula = valor(est, 'd7', D7.fistulaBraco)
+  const fistula = valorAplicavel(est, 'd7', D7.fistulaBraco)
   if (fistula === 'direito' || fistula === 'esquerdo') motivosM.push(`fístula no braço ${fistula}`)
   if (ehSim(est, 'd7', D7.mastectomia)) {
-    const lado = valor(est, 'd7', D7.mastectomiaLado)
+    const lado = valorAplicavel(est, 'd7', D7.mastectomiaLado)
     motivosM.push(`mastectomia ou esvaziamento axilar${typeof lado === 'string' ? ` (${lado === 'ambos' ? 'ambos os lados' : `lado ${lado}`})` : ''}`)
   }
   if (motivosM.length) add('M', `Membro restrito: ${motivosM.join('; ')}. Não puncionar nem aferir PA naquele braço.`)

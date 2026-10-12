@@ -219,7 +219,27 @@ export type { EstadoMensagem, GatilhoAviso }
 // ---------------------------------------------------------------------------
 
 export { versoesDosModelos } from './modelos/v1/index.ts'
-export { VERSAO_MODELOS_V1, D7, ITENS_ALERGIA, CP1, CP2, D2, ADM, SI, AN, TO, SO, ALTA } from './modelos/ids.ts'
+export {
+  VERSAO_MODELOS_V1,
+  VERSAO_MODELOS,
+  D7,
+  ITENS_ALERGIA,
+  CP1,
+  CP2,
+  D2,
+  ADM,
+  ADM_LEGADO,
+  SI,
+  AN,
+  TO,
+  SO,
+  ALTA,
+  CLASSES_MEDICAMENTO,
+  CONDICAO_OLHO_UNICO,
+  medicamentoD2,
+  medicamentoAdmissao,
+} from './modelos/ids.ts'
+export type { ClasseMedicamento } from './modelos/ids.ts'
 export { linhasMatrizPermissoes, PAPEIS_POR_MODELO, PAPEIS_POR_EVENTO, PAPEIS_LEITURA } from './permissoes.ts'
 export { permissoesDoAtor } from './projecao.ts'
 export { normalizarModelo, validadePosterior } from './regras/lente.ts'

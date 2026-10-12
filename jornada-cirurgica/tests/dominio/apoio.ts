@@ -263,6 +263,7 @@ export function valorPadrao(sim: Simulador, modelo: ModeloId, item: ItemModelo):
     [`d2:${D2.mudancaMedicacao}`]: 'nao',
     [`d2:${D2.tcle}`]: 'sim',
     [`admissao:${ADM.mudouRemedio}`]: 'nao',
+    [`admissao:${ADM.usaGlp1}`]: 'nao',
     [`admissao:${ADM.olhoVermelho}`]: 'nao',
     [`admissao:${ADM.pulseiraBraco}`]: 'lado_do_olho',
     [`sign_in:${SI.condutaAlertas}`]: 'nao_se_aplica',

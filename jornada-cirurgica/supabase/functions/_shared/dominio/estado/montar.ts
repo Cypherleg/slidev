@@ -372,6 +372,7 @@ export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
         etapa: str(d.etapa) ?? '',
         descricao: str(d.descricao) ?? '',
         codigo: str(d.codigo),
+        categoria: str(d.categoria) ?? categoriaLegada(str(d.codigo)),
         automatico: d.automatico === true,
         em: ev.registradoEm,
         porId: ev.autorId,
@@ -384,6 +385,13 @@ export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
   }
   if (Date.parse(ev.registradoEm) > Date.parse(est.ultimoEventoEm)) est.ultimoEventoEm = ev.registradoEm
   if (typeof ev.seq === 'number' && ev.seq > est.ultimoSeq) est.ultimoSeq = ev.seq
+}
+
+/** Quase-eventos gravados antes do campo `categoria`: deduz pelo código (manuais sem categoria não contam). */
+function categoriaLegada(codigo: string | null): string | null {
+  if (codigo === 'HS1_DIVERGENCIA_LIO' || codigo === 'HS_LIO_TIME_OUT') return 'lio'
+  if (codigo === 'HS3_DIVERGENCIA_IDENTIDADE_OLHO') return 'identidade'
+  return null
 }
 
 /** Atualiza alertas (trilha de ativação) e hard stops após um evento. */

@@ -138,7 +138,7 @@ export interface EstadoInterno extends Estado {
   teachBack: { resultado: 'adequado_primeira' | 'apos_reorientacao' | 'inadequado'; observacao: string | null; em: string; porId: string } | null
   teachBacks: { resultado: 'adequado_primeira' | 'apos_reorientacao' | 'inadequado'; em: string }[]
   intercorrencias: { descricao: string; em: string; porId: string; neverEvent: string | null }[]
-  quaseEventos: { etapa: string; descricao: string; codigo: string | null; automatico: boolean; em: string; porId: string; camposDivergentes: CampoLente[] }[]
+  quaseEventos: { etapa: string; descricao: string; codigo: string | null; categoria: string | null; automatico: boolean; em: string; porId: string; camposDivergentes: CampoLente[] }[]
   suspensoes: { tipo: 'suspenso' | 'cancelado'; em: string; porId: string; motivo: string; causa: string | null; evitavel: boolean | null }[]
   atrasos: { em: string; minutos: number | null }[]
   mensagensEnfileiradas: { mensagemId: string; gatilho: string; contatoId: string; em: string }[]

@@ -14,7 +14,9 @@ import type {
   LenteVisao,
   MateriaisVisao,
   RespostaAtual,
+  ValorAlergia,
   ValoresLente,
+  ValorMedicamento,
 } from './tipos.ts'
 import { OLHO_EXTENSO, ORDEM_MODELOS } from './tipos.ts'
 import type { LeituraTimeOut } from './contrato.ts'
@@ -33,9 +35,13 @@ import {
   RANK,
   registroLente,
   respostasDoModelo,
+  itemDoModelo,
+  valor,
+  valorAplicavel,
 } from './estado/consultas.ts'
 import type { EstadoInterno } from './estado/tipos.ts'
-import { alertasDoEstado } from './regras/alertas.ts'
+import { alertasDoEstado, medicamento } from './regras/alertas.ts'
+import { ADM, D7, ITENS_ALERGIA } from './modelos/ids.ts'
 import { blocosVisao } from './regras/blocos.ts'
 import { calcularDots } from './regras/dots.ts'
 import { DEFINICAO_POR_CODIGO, hardStopsAbertos } from './regras/hardstops.ts'
@@ -153,6 +159,26 @@ function materiaisVisao(est: EstadoInterno, agora: string): MateriaisVisao {
   }
 }
 
+/** O que verbalizar no Time Out para todo paciente, mesmo que negativo (POP §2 regra 4, §9.C). */
+function verbalizacaoTimeOut(est: EstadoInterno): NonNullable<EpisodioVisao['verbalizacaoTimeOut']> {
+  const alergias = ITENS_ALERGIA.filter((id) => (valor(est, 'd7', id) as ValorAlergia | undefined)?.tem === true).map((id) => {
+    const v = valor(est, 'd7', id) as ValorAlergia
+    const nome = (itemDoModelo(est, 'd7', id)?.texto ?? id).replace(/^Alergia a /, '').replace(/ \(descrever a reação\)$/, '')
+    return v.reacao ? `${nome} (${v.reacao})` : nome
+  })
+  const nova = valorAplicavel(est, 'admissao', ADM.alergiaNova)
+  if (typeof nova === 'string' && nova.trim()) alergias.push(`${nova.trim()} (informada na admissão)`)
+  const uso = (m: ValorMedicamento | null, rotulo: string) =>
+    !m ? `${rotulo}: não registrado` : m.uso === 'nao' ? `${rotulo}: não usa` : `${rotulo}: ${m.uso === 'usa' ? 'usa' : 'já usou'}${m.nomes ? ` (${m.nomes})` : ''}`
+  const antic = medicamento(est, D7.anticoagulante)
+  const antiag = medicamento(est, D7.antiagregante)
+  return {
+    alergias: alergias.length ? alergias : [valor(est, 'd7', D7.nenhumaAlergia) === 'sim' ? 'Nenhuma alergia conhecida' : 'Alergias não registradas'],
+    alfaBloqueador: uso(medicamento(est, D7.alfaBloqueador), 'α-bloqueador'),
+    anticoagulacao: `${uso(antic, 'Anticoagulante')}; ${uso(antiag, 'antiagregante')}`,
+  }
+}
+
 /** Mapa ação → { permitido, motivo } para o ator (nomes das ações de api/contrato.ts). */
 export function permissoesDoAtor(est: EstadoInterno, ator: Ator): Record<string, { permitido: boolean; motivo?: string }> {
   const r: Record<string, { permitido: boolean; motivo?: string }> = {}
@@ -257,6 +283,7 @@ export function projetarVisao(estado: Estado, ator: Ator, agora: string): Episod
       ? { resultado: est.teachBack.resultado, ...(est.teachBack.observacao ? { observacao: est.teachBack.observacao } : {}), em: est.teachBack.em, porNome: nomeMembro(est, est.teachBack.porId) }
       : null,
     permissoes: permissoesDoAtor(est, ator),
+    verbalizacaoTimeOut: verbalizacaoTimeOut(est),
     hardStopsResolvidos: est.resolucoesHardStop.map((r) => ({
       codigo: r.codigo,
       titulo: DEFINICAO_POR_CODIGO[r.codigo]?.titulo ?? r.codigo,

@@ -56,7 +56,6 @@ describe('pendências (o que falta, de quem depende, desde quando)', () => {
         'tcle.nao_assinado',
         'orientacoes.teach_back',
         'contato.whatsapp_ausente',
-        'd7.acompanhante_reserva',
         'episodio.sem_data',
       ]),
     )
@@ -201,10 +200,12 @@ describe('indicadores (POP §12) e resumos', () => {
     expect(n(2)).toMatchObject({ numerador: null, valor: null })
     expect(n(2).observacao).toContain('observação direta')
     expect(n(3)).toMatchObject({ numerador: 1, denominador: 1, valor: 1 })
-    expect(n(4)).toMatchObject({ numerador: 1, observacao: 'Chegada: 0 · D-2: 1 · D0: 0.' })
+    expect(n(4)).toMatchObject({ numerador: 1 })
+    expect(n(4).observacao).toContain('Chegada: 0 · D-2: 1 · D0: 0.')
     expect(n(5)).toMatchObject({ numerador: 1 })
     expect(n(6)).toMatchObject({ numerador: 1, denominador: 4, valor: 0.25 })
-    expect(n(7)).toMatchObject({ numerador: 3, denominador: 4, valor: 0.75 })
+    // 7: sobre cirurgias realizadas (só A foi operado; TCLE assinado no D-2).
+    expect(n(7)).toMatchObject({ numerador: 1, denominador: 1, valor: 1 })
     expect(n(8)).toMatchObject({ numerador: null, valor: null })
     expect(n(9)).toMatchObject({ numerador: 1, denominador: 2, valor: 0.5 })
     expect(n(9).observacao).toContain('pergunta 2 (1)')
@@ -223,7 +224,8 @@ describe('indicadores (POP §12) e resumos', () => {
     expect(r.episodios).toHaveLength(3) // cancelado fica de fora
     expect(r.lentesNaoConferidas.map((x) => x.etapa)).toEqual(['Quarentena'])
     expect(r.termosNaoAssinados).toEqual([{ episodioId: c.entrada.episodio.id, paciente: 'Paciente Teste Alfa da Silva', status: 'nao_enviado' }])
-    expect(r.alertasSemConduta).toEqual([])
+    // A quarentena da LIO é alerta ao cirurgião; a conduta é a resolução por escrito.
+    expect(r.alertasSemConduta).toEqual([{ episodioId: c.entrada.episodio.id, paciente: 'Paciente Teste Alfa da Silva', alerta: 'LIO em quarentena (checkpoint 2, ciclo 1)' }])
   })
 
   it('visão de leitura do dia: só cirurgião e gestora; traz a lente formatada', () => {

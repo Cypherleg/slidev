@@ -7,7 +7,7 @@ import { cicloCp1, RANK } from './estado/consultas.ts'
 import type { CicloLente, EstadoInterno } from './estado/tipos.ts'
 import { dataLocal, somarDias } from './util/datas.ts'
 
-const CODIGOS_DIVERGENCIA = new Set(['HS1_DIVERGENCIA_LIO', 'HS3_DIVERGENCIA_IDENTIDADE_OLHO', 'HS_LIO_TIME_OUT'])
+const CATEGORIAS_DIVERGENCIA = new Set(['identidade', 'olho', 'lio'])
 const CAUSAS_EVITAVEIS = new Set(['sem_acompanhante', 'colirio_nao_usado', 'medicacao_nao_ajustada', 'olho_vermelho_nao_avisado', 'tcle_ausente', 'lio_indisponivel'])
 
 const fracao = (n: number, d: number): number | null => (d > 0 ? Math.round((n / d) * 10000) / 10000 : null)
@@ -33,13 +33,13 @@ export function calcularIndicadores(estados: Estado[], de: string, ate: string):
     const data = e.agenda.dataCirurgia!
     return !!cp1 && !!cp2 && cp1.porId !== cp2.porId && dataLocal(cp1.em) < data && dataLocal(cp2.em) < data
   })
-  // 4. Divergências interceptadas por etapa (quase-eventos de identidade, olho ou LIO e os registrados à mão).
+  // 4. Divergências interceptadas por etapa: só quase-eventos de identidade, olho ou LIO (categoria).
   const porEtapa: Record<string, number> = { chegada: 0, d2: 0, d0: 0 }
   for (const e of todos) {
     for (const q of e.quaseEventos) {
       const d = dataLocal(q.em)
       if (d < de || d > ate) continue
-      if (q.automatico && (!q.codigo || !CODIGOS_DIVERGENCIA.has(q.codigo))) continue
+      if (!q.categoria || !CATEGORIAS_DIVERGENCIA.has(q.categoria)) continue
       if (q.etapa in porEtapa) porEtapa[q.etapa]++
     }
   }
@@ -50,8 +50,8 @@ export function calcularIndicadores(estados: Estado[], de: string, ate: string):
   const evitaveis = doPeriodo.filter((e) =>
     e.suspensoes.some((s) => dataLocal(s.em) === e.agenda.dataCirurgia && (s.evitavel === true || (s.evitavel === null && s.causa !== null && CAUSAS_EVITAVEIS.has(s.causa)))),
   )
-  // 7. TCLE no prazo: assinado até D-2.
-  const tcleNoPrazo = doPeriodo.filter((e) => {
+  // 7. TCLE no prazo: assinado até D-2, sobre as cirurgias realizadas (coerente com 1 e 3).
+  const tcleNoPrazo = operados.filter((e) => {
     const assinatura = e.tcle.historico.find((h) => h.status === 'assinado' || h.status === 'olho_conferido')
     return !!assinatura && dataLocal(assinatura.em) <= somarDias(e.agenda.dataCirurgia!, -2)
   })
@@ -69,10 +69,10 @@ export function calcularIndicadores(estados: Estado[], de: string, ate: string):
     { numero: 1, nome: 'Checklist D0 completo', numerador: completos.length, denominador: operados.length, valor: fracao(completos.length, operados.length), meta: '100%', observacao: 'Cirurgias com admissão, Sign In, Time Out e Sign Out concluídos e assinados ÷ cirurgias realizadas.' },
     { numero: 2, nome: 'Time Out real', numerador: null, denominador: null, valor: null, meta: '≥ 95%', observacao: 'Exige observação direta (5 por mês): registrar fora do painel.' },
     { numero: 3, nome: 'Dupla conferência de LIO', numerador: dupla.length, denominador: operados.length, valor: fracao(dupla.length, operados.length), meta: '100%', observacao: 'LIOs com checkpoints 1 e 2 por pessoas diferentes antes do D0 ÷ cirurgias realizadas.' },
-    { numero: 4, nome: 'Divergências interceptadas', numerador: totalDiv, denominador: null, valor: null, meta: 'Sem meta de zero', observacao: `Chegada: ${porEtapa.chegada} · D-2: ${porEtapa.d2} · D0: ${porEtapa.d0}.` },
+    { numero: 4, nome: 'Divergências interceptadas', numerador: totalDiv, denominador: null, valor: null, meta: 'Sem meta de zero', observacao: `Chegada: ${porEtapa.chegada} · D-2: ${porEtapa.d2} · D0: ${porEtapa.d0}. Conta quase-eventos de identidade, olho ou LIO (categoria).` },
     { numero: 5, nome: 'Never events', numerador: never.length, denominador: null, valor: null, meta: '0', observacao: 'Intercorrências registradas como never event (olho errado, paciente errado, LIO errada implantada). A fonte oficial é a notificação.' },
     { numero: 6, nome: 'Cancelamentos evitáveis no D0', numerador: evitaveis.length, denominador: doPeriodo.length, valor: fracao(evitaveis.length, doPeriodo.length), meta: 'Definir após linha de base', observacao: 'Suspensos ou cancelados no dia da cirurgia por causa evitável ÷ agendados.' },
-    { numero: 7, nome: 'TCLE no prazo', numerador: tcleNoPrazo.length, denominador: doPeriodo.length, valor: fracao(tcleNoPrazo.length, doPeriodo.length), meta: '≥ 90%', observacao: 'TCLE assinados até D-2 ÷ agendados.' },
+    { numero: 7, nome: 'TCLE no prazo', numerador: tcleNoPrazo.length, denominador: operados.length, valor: fracao(tcleNoPrazo.length, operados.length), meta: '≥ 90%', observacao: 'TCLE assinados até D-2 ÷ cirurgias realizadas.' },
     { numero: 8, nome: 'Acurácia refrativa', numerador: null, denominador: null, valor: null, meta: 'Meta própria', observacao: 'Exige refração aos 30 dias (prontuário): dado externo ao painel.' },
     {
       numero: 9,

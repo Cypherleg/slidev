@@ -40,7 +40,7 @@ export function gerarEtiquetas(estado: Estado, config: ConfigJornada): Etiqueta[
   const valores: Record<string, string> = {
     NOME_COMPLETO: ent.paciente.nomeCompleto.toLocaleUpperCase('pt-BR'),
     NASCIMENTO: formatarData(ent.paciente.dataNascimento),
-    PRONTUARIO: ent.paciente.prontuario ?? '',
+    PRONTUARIO: ent.paciente.prontuario && ent.paciente.prontuario.trim() ? ent.paciente.prontuario.trim() : 'PRONTUÁRIO NÃO REGISTRADO',
     OLHO_EXTENSO: OLHO_EXTENSO[ent.episodio.olho],
     CIRURGIA: ent.episodio.tipoCirurgia,
     DOTS: calcularDots(est).map(textoDot).join(' | '),

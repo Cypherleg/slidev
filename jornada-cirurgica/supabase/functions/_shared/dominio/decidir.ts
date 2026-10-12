@@ -4,6 +4,7 @@
 
 import type {
   Ator,
+  CategoriaQuaseEvento,
   CausaCancelamento,
   Comando,
   ContextoDecisao,
@@ -16,7 +17,7 @@ import type {
   TipoEtiqueta,
 } from './contrato.ts'
 import { ErroDominio } from './contrato.ts'
-import { ADM, D7, ITENS_ALERGIA, SI, SO, TO } from './modelos/ids.ts'
+import { ADM, D2, D7, ITENS_ALERGIA, SI, SO, TO } from './modelos/ids.ts'
 import type {
   CampoLente,
   CodigoHardStop,
@@ -55,15 +56,25 @@ import {
   valor,
 } from './estado/consultas.ts'
 import type { EstadoInterno } from './estado/tipos.ts'
-import { ALERTAS_HS6, alertaComunicado, avaliarAlertasAtivos } from './regras/alertas.ts'
+import {
+  ALERTAS_HS6,
+  alertasDoEstado,
+  alertasSemComunicacao,
+  avaliarAlertasAtivos,
+  condutaValida,
+  ehAlertaQuarentena,
+  ITENS_CRITICOS_D7,
+} from './regras/alertas.ts'
 import { impedimentosConclusao, motivoIndisponivel } from './regras/blocos.ts'
 import {
   bloqueiosPara,
   codigosAbertos,
   DEFINICAO_POR_CODIGO,
   hardStopsAbertos,
+  ocorrenciaEscritaAberta,
   TRANSICAO_LEITURA_LIO,
 } from './regras/hardstops.ts'
+import { tcleRetidoPorExpectativa } from './regras/tcle.ts'
 import { motivosForaDeHoraConclusao, motivosForaDeHoraD0, motivosForaDeHoraResposta } from './regras/horareal.ts'
 import { CAMPOS_LENTE, compararLente, validarChegada, validarLeitura, validarPlano, validarValoresLente } from './regras/lente.ts'
 import { avisoAtraso, avisosAutomaticos, mensagemEnvioTcle } from './mensagens.ts'
@@ -267,9 +278,10 @@ export const PRE = {
     const def = DEFINICAO_POR_CODIGO[codigo]
     if (!def) erro('VALIDACAO', 'Código de hard stop desconhecido.', { codigo })
     exigirNaoTerminal(est)
-    if (!def.exigeResolucaoEscrita) erro('VALIDACAO', `Este hard stop não se resolve por texto: ${def.comoResolver}`, { codigo })
+    if (!def.gatilhos || !def.porEscrito) erro('VALIDACAO', `Este hard stop não se resolve por texto: ${def.comoResolver}`, { codigo })
     if (!codigosAbertos(est).includes(codigo)) erro('ESTADO', 'Hard stop não está aberto.', { codigo })
-    return exigirPapel(ator, def.resolvivelPor, `resolver ${def.titulo}`)
+    if (!ocorrenciaEscritaAberta(est, codigo)) erro('VALIDACAO', `Este hard stop não se resolve por texto agora: ${def.porCondicao?.comoResolver ?? def.comoResolver}`, { codigo })
+    return exigirPapel(ator, def.porEscrito!.resolvivelPor, `resolver ${def.titulo}`)
   },
 }
 
@@ -320,8 +332,8 @@ class Resultado {
     return r
   }
 
-  quaseEvento(papel: Papel, etapa: 'chegada' | 'd2' | 'd0', descricao: string, codigo: CodigoHardStop | null, camposDivergentes: CampoLente[] = []) {
-    this.evento('quase_evento.registrado', { etapa, descricao, codigo, automatico: true, ...(camposDivergentes.length ? { camposDivergentes } : {}) }, papel)
+  quaseEvento(papel: Papel, etapa: 'chegada' | 'd2' | 'd0', descricao: string, codigo: CodigoHardStop | null, camposDivergentes: CampoLente[] = [], categoria: CategoriaQuaseEvento = 'lio') {
+    this.evento('quase_evento.registrado', { etapa, descricao, codigo, categoria, automatico: true, ...(camposDivergentes.length ? { camposDivergentes } : {}) }, papel)
     if (codigo) this.quaseEventosExplicitos.add(codigo)
   }
 
@@ -334,6 +346,24 @@ class Resultado {
     return interno(montarEstado({ ...base, eventos: [...base.eventos, ...provisorios], lente: [...base.lente, ...registros] }))
   }
 }
+
+/** Categoria do quase-evento automático (indicador 4: identidade, olho ou LIO). */
+function categoriaDoHardStop(codigo: CodigoHardStop, fontes: string[]): CategoriaQuaseEvento {
+  // Indicador 4 (POP §12): só divergências de identidade, olho ou LIO. Biometria ausente (HS2) e troca de LIO
+  // decidida pelo cirurgião (HS8) não são divergências: 'outro'.
+  if (codigo === 'HS1_DIVERGENCIA_LIO') return 'lio'
+  if (codigo === 'HS_LIO_TIME_OUT') return fontes.some((f) => f.endsWith(TO.procedimento)) ? 'outro' : 'lio'
+  if (codigo === 'HS3_DIVERGENCIA_IDENTIDADE_OLHO') {
+    const olho = [`d2:${D2.tcle}`, `admissao:${ADM.tcleOlho}`, `time_out:${TO.marca}`]
+    return fontes.some((f) => olho.includes(f)) ? 'olho' : 'identidade'
+  }
+  return 'outro'
+}
+
+export const MOTIVO_TCLE_RETIDO = 'TCLE retido: realinhar a expectativa em consulta antes do TCLE (POP §1.F); aguarda a conduta do cirurgião no alerta.'
+
+/** POP §1.F: alerta "espera ficar sem óculos com LIO monofocal" sem conduta válida retém o TCLE. */
+export const tcleRetido = tcleRetidoPorExpectativa
 
 function etapaDoComando(comando: Comando, est: EstadoInterno): 'chegada' | 'd2' | 'd0' {
   if (comando.tipo === 'lente.plano' || comando.tipo === 'lente.chegada') return 'chegada'
@@ -485,7 +515,7 @@ function responder(r: Resultado, c: Extract<Comando, { tipo: 'checklist.responde
     verificarHardStops(est, `marcar:${c.modelo}.${item.id}`)
     // Ordem (regra 4): pré-requisitos registrados ANTES (envios separados).
     for (const pre of item.depoisDe ?? []) {
-      if (!marcado(est, c.modelo, pre) || (itemDoModelo(est, c.modelo, pre)?.tipo === 'sim_nao' && valor(est, c.modelo, pre) !== 'sim')) {
+      if (!marcado(est, c.modelo, pre) || valor(est, c.modelo, pre) === 'nao') {
         const preItem = itemDoModelo(est, c.modelo, pre)
         erro('ORDEM', `Ordem obrigatória: antes, "${preItem?.texto ?? pre}".`, { itemId: item.id, depoisDe: pre, ...(item.hardStop ? { hardStop: item.hardStop } : {}) })
       }
@@ -497,12 +527,33 @@ function responder(r: Resultado, c: Extract<Comando, { tipo: 'checklist.responde
     const observacao = temTexto(resp.observacao) ? resp.observacao!.trim() : null
     // Regras específicas
     if (item.id === D7.alertasComunicados && c.modelo === 'd7') {
-      const pend = avaliarAlertasAtivos(est).filter((a) => a.nivel === 'alerta' && !alertaComunicado(est, a.id))
+      const pend = alertasSemComunicacao(est)
       if (pend.length) erro('ORDEM', `Há alerta não comunicado ao cirurgião: ${pend[0].titulo}.`, { alertas: pend.map((a) => a.id) })
     }
-    if (item.id === D7.materiais && c.modelo === 'd7' && v === 'enviados' && !est.materiais.enviados.length) {
-      erro('ORDEM', 'Envie o vídeo de preparo e o link do TCLE pelo painel antes de marcar como enviados.')
+    if (item.id === D7.materiais && c.modelo === 'd7' && v === 'enviados' && !est.materiais.enviados.some((e) => !!e.mensagemId)) {
+      erro('ORDEM', 'Envie o vídeo de preparo e o link do TCLE pelo painel antes de marcar como enviados (TCLE retido também não conta).')
     }
+    // Correção de item crítico do D-7 depois de concluído: motivo obrigatório (gera nova comunicação ao cirurgião).
+    if (c.modelo === 'd7' && ITENS_CRITICOS_D7.includes(item.id as (typeof ITENS_CRITICOS_D7)[number]) && concluido(est, 'd7') && valor(est, 'd7', item.id) !== undefined && !observacao) {
+      erro('VALIDACAO', 'Correção de item crítico depois do D-7 concluído: registre o motivo na observação. O cirurgião precisa ser avisado de novo.', { itemId: item.id })
+    }
+    // Déficit cognitivo (POP §11): "confirmado com o acompanhante" só com déficit cognitivo registrado no D-7.
+    if ((c.modelo === 'admissao' && item.id === ADM.identificacao) || (c.modelo === 'sign_in' && item.id === SI.identificacao)) {
+      if (v === 'acompanhante' && valor(est, 'd7', D7.demencia) !== 'sim') erro('VALIDACAO', 'Confirmação com o acompanhante só para paciente com déficit cognitivo registrado no D-7 (POP §11).', { itemId: item.id })
+    }
+    // O que mudou: "outro remédio" e "estado de saúde" exigem descrição.
+    if ((c.modelo === 'd2' && item.id === D2.mudancaClasses) || (c.modelo === 'admissao' && item.id === ADM.mudouClasses)) {
+      if (Array.isArray(v) && (v.includes('outra') || v.includes('estado_saude')) && !observacao) erro('VALIDACAO', 'Descreva na observação o que mudou.', { itemId: item.id })
+    }
+    if (c.modelo === 'd7' && item.id === D7.acompanhanteReservaSituacao && v === 'nenhum' && !observacao) {
+      erro('VALIDACAO', 'Sem acompanhante reserva: registre o motivo na observação.', { itemId: item.id })
+    }
+    // Datas que precisam ser passadas, quando o item se aplica (no mesmo envio ou no registro).
+    const valorNoEnvio = (id: string) => c.respostas.find((x) => x.itemId === id)?.valor ?? valor(est, c.modelo, id)
+    const aplica =
+      (c.modelo === 'd7' && item.id === D7.dataPrimeiroOlho && valorNoEnvio(D7.primeiroSegundo) === 'segundo') ||
+      (c.modelo === 'admissao' && item.id === ADM.glp1UltimaDose && valorNoEnvio(ADM.usaGlp1) === 'sim')
+    if (aplica && typeof v === 'string' && v > hoje) erro('VALIDACAO', 'Data no futuro.', { itemId: item.id })
     if (c.modelo === 'admissao' && item.id === ADM.pulseiraBraco && v === 'excecao' && !observacao) erro('VALIDACAO', 'Registre o motivo da exceção na observação.', { itemId: item.id })
     if (c.modelo === 'sign_out' && item.id === SO.equipamento && v === 'reportados' && !observacao) erro('VALIDACAO', 'Descreva o problema de equipamento na observação.', { itemId: item.id })
     if (c.modelo === 'sign_out' && item.id === SO.intercorrencias) {
@@ -510,10 +561,15 @@ function responder(r: Resultado, c: Extract<Comando, { tipo: 'checklist.responde
       if (v === 'sem_intercorrencia' && est.intercorrencias.length) erro('VALIDACAO', 'Há intercorrência registrada neste episódio.', { itemId: item.id })
     }
     if (c.modelo === 'sign_in' && item.id === SI.condutaAlertas) {
-      const ativos = avaliarAlertasAtivos(est).filter((a) => ALERTAS_HS6.includes(a.id))
+      const todos = alertasDoEstado(est, true).filter((a) => ALERTAS_HS6.includes(a.id))
+      const ativos = todos.filter((a) => !a.inativo)
+      const corrigidosSemAviso = todos.filter((a) => a.inativo && a.comunicacaoPendente)
       if (v === 'nao_se_aplica' && ativos.length) erro('VALIDACAO', 'Há alerta de α-bloqueador, anticoagulante ou antiagregante registrado.', { itemId: item.id })
+      if (v === 'nao_se_aplica' && corrigidosSemAviso.length) {
+        erro('VALIDACAO', 'Alerta de α-bloqueador ou anticoagulação desativado por correção ainda não comunicado ao cirurgião.', { itemId: item.id, alertas: corrigidosSemAviso.map((a) => a.id) })
+      }
       if (v === 'presente' && !ativos.length) erro('VALIDACAO', 'Não há alerta de α-bloqueador, anticoagulante ou antiagregante: use "não se aplica".', { itemId: item.id })
-      const semConduta = ativos.filter((a) => !est.condutas[a.id])
+      const semConduta = ativos.filter((a) => !condutaValida(est, a.id))
       if (v === 'presente' && semConduta.length) erro('HARD_STOP', 'Alerta sem conduta escrita do cirurgião.', { hardStops: ['HS6_SEM_CONDUTA_ALFA_ANTICOAG'] })
     }
     if (c.modelo === 'time_out' && item.id === TO.readBack && !cicloAtual(est).timeOutResultado?.confere) {
@@ -602,7 +658,8 @@ function concluirBloco(r: Resultado, c: Extract<Comando, { tipo: 'bloco.concluir
 function comunicarAlerta(r: Resultado, c: Extract<Comando, { tipo: 'alerta.comunicar' }>) {
   const { est, ctx } = r
   const papel = PRE.comunicarAlerta(est, ctx.ator)
-  if (!avaliarAlertasAtivos(est).some((a) => a.id === c.alertaId)) erro('VALIDACAO', 'Alerta inexistente ou sem efeito.', { alertaId: c.alertaId })
+  // Alerta ativo ou desativado por correção (a correção também chega ao cirurgião).
+  if (!est.trilhaAlertas[c.alertaId]) erro('VALIDACAO', 'Alerta inexistente.', { alertaId: c.alertaId })
   const vias: ViaComunicacao[] = ['presencial', 'telefone', 'whatsapp', 'painel', 'outro']
   if (!vias.includes(c.via)) erro('VALIDACAO', 'Via de comunicação inválida.', { campo: 'via' })
   const cir = est.entrada.membros[c.cirurgiaoId]
@@ -615,6 +672,7 @@ function comunicarAlerta(r: Resultado, c: Extract<Comando, { tipo: 'alerta.comun
 function condutaAlerta(r: Resultado, c: Extract<Comando, { tipo: 'alerta.conduta' }>) {
   const { est, ctx } = r
   const papel = PRE.condutaAlerta(est, ctx.ator)
+  if (ehAlertaQuarentena(c.alertaId)) erro('VALIDACAO', 'Quarentena da LIO: a conduta é a resolução por escrito da quarentena.', { alertaId: c.alertaId })
   if (!avaliarAlertasAtivos(est).some((a) => a.id === c.alertaId)) erro('VALIDACAO', 'Alerta inexistente ou sem efeito.', { alertaId: c.alertaId })
   r.evento('alerta.conduta_registrada', { alertaId: c.alertaId, conduta: exigirTexto(c.conduta, 'conduta', 'Conduta') }, papel)
 }
@@ -785,10 +843,22 @@ function materiaisEnviar(r: Resultado, c: Extract<Comando, { tipo: 'materiais.en
   const papel = PRE.materiais(est, ctx.ator)
   if (!temTexto(c.tokenLink) || c.tokenLink.length < 16) erro('VALIDACAO', 'Token do link inválido.', { campo: 'tokenLink' })
   if (!validarInstante(c.expiraEm) || Date.parse(c.expiraEm) <= Date.parse(ctx.agora)) erro('VALIDACAO', 'Validade do link inválida.', { campo: 'expiraEm' })
-  const materiais: MaterialCatalogo[] = (c.materiais ?? []).filter((m) => m && m.ativo)
+  let materiais: MaterialCatalogo[] = (c.materiais ?? []).filter((m) => m && m.ativo)
   if (!materiais.length) erro('VALIDACAO', 'Nenhum material ativo para enviar.', { campo: 'materiais' })
   if (!ctx.urlPaginaPaciente) erro('VALIDACAO', 'Endereço da página do paciente não configurado.')
   const link = `${ctx.urlPaginaPaciente}${c.tokenLink}`
+  // POP §1.F: com expectativa a realinhar em consulta e sem conduta, o TCLE fica retido (os materiais de preparo podem ir).
+  if (tcleRetido(est)) {
+    materiais = materiais.filter((m) => m.tipo !== 'video_tcle' && m.tipo !== 'link_tcle')
+    if (!materiais.length) erro('ESTADO', MOTIVO_TCLE_RETIDO, { campo: 'materiais' })
+    r.evento('link_paciente.criado', { expiraEm: c.expiraEm }, papel)
+    r.evento(
+      'material.enviado',
+      { materiais: materiais.map((m) => ({ id: m.id, codigo: m.codigo, versao: m.versao, titulo: m.titulo })), contatoId: null, mensagemId: null, gatilho: 'materiais_preparo', tcleRetido: true },
+      papel,
+    )
+    return
+  }
   const msg = mensagemEnvioTcle(est, link, ctx)
   r.evento('link_paciente.criado', { expiraEm: c.expiraEm }, papel)
   r.evento(
@@ -850,7 +920,10 @@ function etiquetaCopiada(r: Resultado, c: Extract<Comando, { tipo: 'etiqueta.cop
 function quaseEventoManual(r: Resultado, c: Extract<Comando, { tipo: 'quase_evento.registrar' }>) {
   const papel = PRE.quaseEvento(r.est, r.ctx.ator)
   if (!['chegada', 'd2', 'd0'].includes(c.etapa)) erro('VALIDACAO', 'Etapa: chegada, D-2 ou D0.', { campo: 'etapa' })
-  r.evento('quase_evento.registrado', { etapa: c.etapa, descricao: exigirTexto(c.descricao, 'descricao', 'Descrição'), codigo: null, automatico: false }, papel)
+  if (c.categoria !== undefined && c.categoria !== null && !['identidade', 'olho', 'lio', 'outro'].includes(c.categoria)) erro('VALIDACAO', 'Categoria: identidade, olho, LIO ou outro.', { campo: 'categoria' })
+  const dados: Record<string, unknown> = { etapa: c.etapa, descricao: exigirTexto(c.descricao, 'descricao', 'Descrição'), codigo: null, automatico: false }
+  if (c.categoria) dados.categoria = c.categoria
+  r.evento('quase_evento.registrado', dados, papel)
 }
 
 // ---------------------------------------------------------------------------
@@ -948,8 +1021,11 @@ export function decidir(estado: Estado, comando: Comando, ctx: ContextoDecisao):
     const papelQe = r.eventos[0].autorPapel as Papel
     for (const h of hardStopsAbertos(depois)) {
       const def = DEFINICAO_POR_CODIGO[h.codigo]
-      if (antes.has(h.codigo) || !def.registraQuaseEvento || r.quaseEventosExplicitos.has(h.codigo)) continue
-      r.quaseEvento(papelQe, etapaDoComando(comando, est), `Hard stop acionado: ${def.titulo}.`, h.codigo)
+      if (!def.registraQuaseEvento || r.quaseEventosExplicitos.has(h.codigo)) continue
+      const fontesAntes = est.ocorrencias[h.codigo]?.fontes ?? []
+      const fontesNovas = (depois.ocorrencias[h.codigo]?.fontes ?? []).filter((f) => !fontesAntes.includes(f))
+      if (antes.has(h.codigo) && !fontesNovas.length) continue
+      r.quaseEvento(papelQe, etapaDoComando(comando, est), `Hard stop acionado: ${def.titulo}.`, h.codigo, [], categoriaDoHardStop(h.codigo, depois.ocorrencias[h.codigo]?.fontes ?? []))
     }
   }
   return { eventos: r.eventos, lente: r.lente, mensagens: r.mensagens }

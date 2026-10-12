@@ -21,7 +21,8 @@ import {
 } from '../estado/consultas.ts'
 import type { EstadoInterno } from '../estado/tipos.ts'
 import { dataLocal, fimDoDiaLocal, inicioDoDiaLocal, proximoDiaUtil, somarDias } from '../util/datas.ts'
-import { ALERTAS_HS6, alertaComunicado, alertasDoEstado } from './alertas.ts'
+import { ALERTAS_HS6, alertasDoEstado, condutaValida, ehAlertaQuarentena } from './alertas.ts'
+import { tcleRetidoPorExpectativa } from './tcle.ts'
 import { faltam } from './blocos.ts'
 import { hardStopsAbertos } from './hardstops.ts'
 import { validadePosterior } from './lente.ts'
@@ -56,18 +57,25 @@ export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia
 
   // Alertas: comunicação no mesmo dia e conduta escrita do cirurgião
   const data = est.agenda.dataCirurgia
-  for (const a of alertasDoEstado(est)) {
+  for (const a of alertasDoEstado(est, true)) {
     if (a.nivel !== 'alerta') continue
-    if (!alertaComunicado(est, a.id)) {
-      const resp: Papel[] = a.origem.modelo === 'admissao' ? ['enfermagem'] : a.origem.modelo === 'sistema' ? ['concierge', 'enfermagem'] : ['concierge']
-      add(`alerta.nao_comunicado:${a.id}`, `Alerta não comunicado ao cirurgião: ${a.titulo}.`, resp, a.geradoEm, 'alerta', {
-        prazo: fimDoDiaLocal(dataLocal(a.geradoEm)),
-        local: 'alertas',
-      })
+    if (a.comunicacaoPendente) {
+      const m = a.origem.modelo
+      const resp: Papel[] =
+        m === 'admissao' ? ['enfermagem'] : m === 'sistema' ? ['concierge', 'enfermagem'] : m === 'cp2' ? ['conferente'] : m === 'time_out' ? ['circulante'] : m === 'd2' ? ['conferente', 'concierge'] : ['concierge']
+      const desde = a.atualizadoEm ?? a.geradoEm
+      add(
+        `alerta.nao_comunicado:${a.id}`,
+        a.inativo ? `Correção de alerta não comunicada ao cirurgião: ${a.titulo}.` : `Alerta não comunicado ao cirurgião: ${a.titulo}.`,
+        resp,
+        desde,
+        'alerta',
+        { prazo: fimDoDiaLocal(dataLocal(desde)), local: 'alertas' },
+      )
     }
-    if (!a.conduta && rank(est) < RANK.alta) {
+    if (!a.inativo && !ehAlertaQuarentena(a.id) && !condutaValida(est, a.id) && rank(est) < RANK.alta) {
       const prazoD0 = ALERTAS_HS6.includes(a.id) && data ? { prazo: inicioDoDiaLocal(data) } : {}
-      add(`alerta.sem_conduta:${a.id}`, `Alerta sem conduta escrita do cirurgião: ${a.titulo}.`, ['cirurgiao'], a.comunicado?.em ?? a.geradoEm, 'alerta', {
+      add(`alerta.sem_conduta:${a.id}`, `Alerta sem conduta escrita do cirurgião${a.condutaDesatualizada ? ' (conduta anterior à última mudança do registro)' : ''}: ${a.titulo}.`, ['cirurgiao'], a.atualizadoEm ?? a.geradoEm, 'alerta', {
         ...prazoD0,
         local: 'alertas',
       })
@@ -122,7 +130,11 @@ export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia
   // Quiz: reprovação dupla ou erro do olho → contato humano em até 1 dia útil (POP §6)
   const contato = contatoHumanoQuiz(est)
   if (contato && rank(est) < RANK.admitido) {
-    const prazo = fimDoDiaLocal(proximoDiaUtil(dataLocal(contato.desde), est.entrada.config.feriados ?? []))
+    // Erro do olho: ligação no MESMO dia (POP §6, pergunta 1). Reprovação dupla: até 1 dia útil (tabela "Se reprovar").
+    const prazo =
+      contato.motivo === 'erro_olho'
+        ? fimDoDiaLocal(dataLocal(contato.desde))
+        : fimDoDiaLocal(proximoDiaUtil(dataLocal(contato.desde), est.entrada.config.feriados ?? []))
     add(
       `quiz.contato_humano:${contato.motivo}`,
       contato.motivo === 'erro_olho'
@@ -150,8 +162,19 @@ export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia
   // Orientações (teach-back) e acompanhante reserva no D-7
   if (rank(est) < RANK.admitido) {
     if (!est.teachBack) add('orientacoes.teach_back', 'Revisão das orientações com teach-back não registrada.', ['concierge'], ep.abertoEm, 'pendencia', { local: 'orientacoes' })
-    if (!resposta(est, 'd7', D7.acompanhanteReserva)) {
-      add('d7.acompanhante_reserva', 'Acompanhante reserva não registrado (POP §8, prevenção).', ['concierge'], ep.abertoEm, 'pendencia', { local: 'd7.E' })
+    const reserva = resposta(est, 'd7', D7.acompanhanteReservaSituacao)
+    if (reserva?.valor === 'nenhum') {
+      add('d7.sem_acompanhante_reserva', 'Sem acompanhante reserva disponível (POP §8, prevenção).', ['concierge'], reserva.registradoEm, 'pendencia', { local: 'd7.E' })
+    }
+    if (tcleRetidoPorExpectativa(est)) {
+      add(
+        'tcle.retido_expectativa',
+        'TCLE retido: espera ficar sem óculos com LIO monofocal; realinhar a expectativa em consulta antes do TCLE (POP §1.F). Conduta do cirurgião no alerta.',
+        ['cirurgiao'],
+        est.trilhaAlertas['d7:F.sem_oculos']?.atualizadoEm ?? ep.abertoEm,
+        'alerta',
+        { local: 'alertas' },
+      )
     }
   }
 

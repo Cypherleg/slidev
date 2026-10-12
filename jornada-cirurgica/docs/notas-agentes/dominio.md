@@ -1,8 +1,10 @@
 # Notas do agente domínio
 
 Regras do POP v0.4 em TypeScript puro: `supabase/functions/_shared/dominio/` (sem dependências; imports relativos com `.ts`).
-Testes: `npx vitest run tests/dominio` → **137 testes passando** (9 arquivos). `npx tsc -p tsconfig.json --noEmit` sem erros
-(também limpo com `--noUnusedLocals --noUnusedParameters` nos arquivos do domínio). Os 69 testes de `tests/api` (banco real) passam com este domínio.
+Testes: `npx vitest run tests/dominio` → **169 testes passando** (10 arquivos). `npx tsc -p tsconfig.json --noEmit` sem erros.
+`tests/api` (banco real): 82 passam, 2 falham + 1 suíte (`beforeAll`), todos pela mesma causa no preenchedor de `dev/` (seção 8, item 1);
+com a correção de uma linha proposta lá, os 88 passam (conferido com uma cópia do preenchedor fora do repositório).
+A fase 2 (revisão de fidelidade ao POP) está nas seções 7 a 9.
 
 Só dados fictícios. Nenhum telefone, nome da equipe ou número de WhatsApp do POP foi para o código (o repositório é público):
 `configPadrao().telefones` vem nulo e é preenchido pela gestora.
@@ -19,7 +21,7 @@ Só dados fictícios. Nenhum telefone, nome da equipe ou número de WhatsApp do 
 | `config.ts` | `configPadrao()`, modelos de etiqueta padrão, limiar técnico de nome parecido. |
 | `permissoes.ts` | Matriz papel × evento (ARQUITETURA §4.4), `linhasMatrizPermissoes()`, papéis de leitura das conferências. |
 | `modelos/ids.ts` | Ids estáveis dos itens que as regras consultam (`D7`, `CP1`, `CP2`, `D2`, `ADM`, `SI`, `AN`, `TO`, `SO`, `ALTA`). |
-| `modelos/v1/*.ts` | Modelos v1 (`pop-0.4/1`): `d7.ts`, `lente.ts` (cp1, cp2), `d2.ts`, `d0.ts` (admissão, Sign In, anestesia, Time Out, Sign Out, alta), `index.ts` (`modelosPadrao(config?)`, `versoesDosModelos`). |
+| `modelos/v1/*.ts` | Modelos v1 (versão `pop-0.4/2` desde a fase 2; era `pop-0.4/1`): `d7.ts`, `lente.ts` (cp1, cp2), `d2.ts`, `d0.ts` (admissão, Sign In, anestesia, Time Out, Sign Out, alta), `index.ts` (`modelosPadrao(config?)`, `versoesDosModelos`). |
 | `estado/tipos.ts` | Estrutura interna do `Estado` (não é contrato). |
 | `estado/montar.ts` | `montarEstado`: dobra em ordem de `seq`; ciclos da lente; trilha de alertas e de hard stops. |
 | `estado/consultas.ts` | Consultas puras (ciclo atual, herança, etapa da lente, respostas, conclusões). |
@@ -98,16 +100,16 @@ Testes em `tests/dominio/`: `apoio.ts` (simulador que faz o papel da API: grava 
    | `manter_plano` com quarentena no Time Out | plano | chegada, cp1, cp2 e nova leitura |
    Ninguém corrige o valor do outro: não há edição de cp2 (uma digitação por ciclo); o plano só pode ser redigitado pela concierge antes de concluir o cp1 do ciclo.
 2. **Quarentena** abre por: divergência do cp2 (contra o plano e contra o olho do episódio); "não" no cp1/cp2 em itens de identidade, olho, modelo, dioptria, tórica (cilindro/eixo) e "coluna do modelo" (cp2); plano com olho diferente do olho do episódio; leitura divergente no Time Out (contra o plano e contra o cp2). Cada abertura gera `quase_evento.registrado` com a etapa (`chegada`, `d2`, `d0`).
-3. **Hard stops**: abertos por condição (somem quando o registro competente corrige a condição) ou, para HS3 e HS7, por ocorrência que só fecha com `hardstop.resolver` do cirurgião. `hardstop.resolver` em hard stop de condição → `VALIDACAO` com o "como resolver". HS1 e HS_LIO_TIME_OUT saem por `lente.resolver_quarentena`; HS6 pela conduta no alerta.
-4. **Quase-evento automático** (POP §13.9) quando um comando abre HS1, HS2, HS3, HS4, HS5, HS6, HS7, HS8 ou HS_LIO_TIME_OUT. HS9, HS_ORDEM_SIGN_IN (regras de ordem, abertos durante todo Sign In), HS_HOMONIMO_NOME_MAE e HS_LIO_SEM_DUPLA_CONFERENCIA não geram.
+3. **Hard stops**: abertos por condição (somem quando o registro competente corrige a condição) ou por ocorrência escrita, que só fecha com `hardstop.resolver` do cirurgião (HS3, HS7 e, desde a fase 2, a dúvida do consentimento no HS5 e a divergência de procedimento no HS_LIO_TIME_OUT). Um código pode ter as duas partes; `exigeResolucaoEscrita`, `resolvivelPor` e `comoResolver` da visão dizem qual está aberta. `hardstop.resolver` em hard stop só de condição → `VALIDACAO` com o "como resolver". HS1 e a parte LIO do HS_LIO_TIME_OUT saem por `lente.resolver_quarentena`; HS6 pela conduta no alerta.
+4. **Quase-evento automático** (POP §13.9) quando um comando abre HS1, HS2, HS3, HS4, HS5, HS6, HS7, HS8 ou HS_LIO_TIME_OUT, ou quando um deles já aberto ganha nova fonte escrita (nova divergência). Leva `categoria` (`identidade`, `olho`, `lio`, `outro`). HS9, HS_ORDEM_SIGN_IN (regras de ordem, abertos durante todo Sign In), HS_HOMONIMO_NOME_MAE e HS_LIO_SEM_DUPLA_CONFERENCIA não geram (pergunta P3 da seção 9).
 5. **Avisos suspensos** com intercorrência, suspensão, cancelamento ou hard stop aberto, exceto as regras de ordem do Sign In (HS9 e HS_ORDEM_SIGN_IN), que estão abertas por construção logo depois da admissão.
 6. **Ordem dos blocos**: d2 só é respondido depois do D-7 concluído; admissão depois do D-2; Sign In e anestesia depois da admissão; Time Out depois do Sign In; Sign Out depois do Time Out; alta depois do Sign Out e exige anestesia concluída. cp1 exige plano; cp2 exige cp1 concluído e sem quarentena. cp1, cp2 e anestesia não mudam o estado.
 7. **Hora real (regra 5)** — fora de hora, com motivo: (a) resposta a item de bloco já concluído (cp1/cp2: no ciclo atual); (b) item de bloco do D0 respondido depois de um bloco POSTERIOR do D0 concluído (sequência admissão → Sign In → Time Out → Sign Out → alta; na anestesia, por item: `foraDeHoraApos` = Time Out para jejum e monitorização, alta para liberação e extras); (c) item ou conclusão de bloco do D0 (e a leitura do Time Out) registrado em data local (São Paulo) diferente da data da cirurgia, ou sem data agendada. Correção depois da conclusão é aceita e sinalizada (não é recusada).
-8. **D-7**: concluir exige todos os itens exigidos, coerência das alergias e todos os alertas de nível `alerta` comunicados. Conduta escrita pelo cirurgião também conta como comunicação (ele foi informado). Conduta pode vir depois: vira pendência do cirurgião e, para α-bloqueador, anticoagulante e antiagregante, HS6 no D0.
+8. **D-7, D-2 e admissão**: concluir exige todos os itens exigidos e todos os alertas de nível `alerta` comunicados (D-7 também a coerência das alergias). Conduta escrita pelo cirurgião também conta como comunicação (ele foi informado). Conduta pode vir depois: vira pendência do cirurgião e, para α-bloqueador, anticoagulante e antiagregante, HS6 no D0. Desde a fase 2, comunicação e conduta valem para o conteúdo do alerta na hora em que foram registradas (seção 7, item 2).
 9. **Agenda**: a data não muda depois da admissão; horário e ordem podem mudar até o Time Out.
 10. **Suspensão e cancelamento**: causa obrigatória; `evitavel` em branco vira `true` para as causas listadas no indicador 6 (o POP as lista como evitáveis) e fica nulo para "outra". Suspenso e cancelado são terminais (nenhum comando clínico); cancelar um suspenso é permitido.
 11. **Sign In/Time Out**: `leitorId` e `confirmadorId` obrigatórios e distintos, membros ativos da equipe do bloco; no Time Out o leitor tem papel circulante e o confirmador, cirurgião.
-12. **Indicadores**: período pela data da cirurgia (4 e 5 pela data do evento). 1 e 3 sobre cirurgias realizadas (Time Out concluído); 3 exige cp1 e cp2 por pessoas diferentes, ambos antes da data da cirurgia, no ciclo usado; 4 conta quase-eventos de identidade/olho/LIO (HS1, HS3, HS_LIO_TIME_OUT) e os registrados à mão, por etapa; 5 conta intercorrências marcadas como never event; 6 conta suspensões/cancelamentos registrados no dia da cirurgia com causa evitável; 7 TCLE assinado até D-2. Complementar (nº 9): aprovação no quiz na 1ª tentativa + perguntas mais erradas. 2 e 8: nulos (dado externo).
+12. **Indicadores**: período pela data da cirurgia (4 e 5 pela data do evento). 1 e 3 sobre cirurgias realizadas (Time Out concluído); 3 exige cp1 e cp2 por pessoas diferentes, ambos antes da data da cirurgia, no ciclo usado; 4 conta quase-eventos com `categoria` identidade, olho ou LIO, automáticos ou à mão, por etapa; 5 conta intercorrências marcadas como never event; 6 conta suspensões/cancelamentos registrados no dia da cirurgia com causa evitável; 7 TCLE assinado até D-2 ÷ cirurgias realizadas. Complementar (nº 9): aprovação no quiz na 1ª tentativa + perguntas mais erradas. 2 e 8: nulos (dado externo).
 
 ---
 
@@ -117,7 +119,7 @@ Testes em `tests/dominio/`: `apoio.ts` (simulador que faz o papel da API: grava 
 2. **`manter_plano`** — herança da tabela da seção 3. No Time Out, conservador: a caixa é reconferida por duas pessoas (chegada, cp1, cp2) antes de nova leitura. `manter_plano` é recusado quando o olho do plano difere do olho do episódio.
 3. **Conferência cega por autoria em qualquer ciclo** (mais conservador que "no ciclo").
 4. **HS3 e HS7 com resolução escrita só do cirurgião**; o item que divergiu ainda precisa ser reconferido ("sim") para o bloco concluir. HS7 também abre no D0 (a partir do D-2 concluído) se o alerta de olho vermelho do D-7 estiver sem conduta. Novo achado (D-2, depois admissão) abre nova ocorrência.
-5. **HS5**: aberto do D-2 concluído até o Sign In se o TCLE não estiver "assinado" (ou "olho conferido"), e sempre que "TCLE assinado; olho do TCLE = olho da agenda" (admissão) ou a reconfirmação do consentimento (Sign In) for "não". O item da admissão é quem confere o olho.
+5. **HS5** (revisto na fase 2): abre na admissão (primeira resposta da admissão) até o Sign In se o TCLE não estiver "assinado" (ou "olho conferido"), e sempre que "TCLE assinado no prontuário" (admissão) for "não". Antes da admissão, TCLE não assinado é pendência. Dúvida na reconfirmação do consentimento (Sign In) abre a parte escrita do HS5 (só o cirurgião resolve). O olho do TCLE é o item separado `A.tcle_olho` ("não" → HS3).
 6. **HS6** inclui antiagregante (POP §9.B e dot S); aberto do D-2 concluído até o Sign In.
 7. **HS4** também na alta ("acompanhante presente" = "não").
 8. **HS2** no item da biometria do cp1, do cp2 e no item da sala do Sign In ("biometria original e plano de LIO presentes").
@@ -131,9 +133,9 @@ Testes em `tests/dominio/`: `apoio.ts` (simulador que faz o papel da API: grava 
 16. **TCLE**: `[nome]` = primeiro nome; nome da concierge = `config.assinaturaConcierge` (se configurado) ou primeiro nome do usuário que envia; "Dr." antes do nome do cirurgião (prefixo "Dr./Dra." do cadastro é retirado para não duplicar).
 17. **Destinatários dos avisos do D0**: contatos `familiar_avisos` e `whatsapp_paciente` com anuência, confirmados e telefone válido; número repetido recebe uma vez.
 18. **Expectativa × LIO**: ALERTA só para LIO "monofocal" (o POP lista "tórica" à parte). Confirmar se tórica monofocal também deve alertar.
-19. **Dots**: Q por cadeira de rodas, marcha instável/risco de queda (sem limiar de idade) e olho único/ambliopia; I e S também por uso passado (S: anticoagulante ou antiagregante); D só com insulina ou sulfonilureia EM USO.
+19. **Dots**: Q por cadeira de rodas, marcha instável/risco de queda (sem limiar de idade), baixa visão no olho contralateral (`C.baixa_visao_contralateral`) e olho único (ambliopia sozinha não dá Q, fase 2); I e S também por uso passado (S: anticoagulante ou antiagregante); D só com insulina ou sulfonilureia EM USO. I, S e D usam o registro efetivo do medicamento (D-7, D-2 ou admissão); A também usa a alergia nova da admissão.
 20. **"Olho do exame = olho do pedido"** (G) como conferência: sem ela o D-7 não conclui (o POP não diz o que fazer na divergência; não inventei alerta).
-21. **Quiz**: erro na pergunta 1 → aguardar contato humano já na 1ª tentativa (além do ALERTA). Contato humano (reprovação dupla/erro do olho) e "link não aberto até D-3" são resolvidos por um teach-back registrado depois (ou pela abertura do link).
+21. **Quiz**: erro na pergunta 1 → aguardar contato humano já na 1ª tentativa (além do ALERTA); a ligação vence no MESMO dia (fase 2; pergunta P2). Contato humano (reprovação dupla/erro do olho) e "link não aberto até D-3" são resolvidos por um teach-back registrado depois (ou pela abertura do link).
 22. **Pendência do D-2**: a partir do D-2 (00:00); vira alerta na véspera.
 23. **Contato confirmado** perde a confirmação se o telefone, o tipo ou a anuência mudarem.
 
@@ -174,4 +176,73 @@ Testes em `tests/dominio/`: `apoio.ts` (simulador que faz o papel da API: grava 
 - `contrato.ts` (novo): tipos movidos de `index.ts` sem mudança; `Comando` de intercorrência + `neverEvent?`; tipo `NeverEvent`.
 - `index.ts`: `modelosPadrao(config?)` (parâmetro opcional); exports novos: `versoesDosModelos`, ids de itens, `linhasMatrizPermissoes`, `PAPEIS_POR_MODELO`, `PAPEIS_POR_EVENTO`, `PAPEIS_LEITURA`, `permissoesDoAtor`, `normalizarModelo`, `validadePosterior`, `LEGENDA_DOTS`, `TETO_DOTS`, `textoDot`, `DEFINICOES_HARD_STOP`, `catalogoHardStops`, constantes de alertas, `prazoGlp1Cabe`, textos de identificação, textos de mensagens, `chaveIdempotencia`, funções do quiz e da página do paciente, `previaMateriais`, `preencherModelo`, `corrigirPaciente`, `ROTULO_ETAPA_LENTE`, `MODELOS_ETIQUETA_PADRAO`, `LIMIAR_NOME_PARECIDO_PADRAO`, `telefoneValido` e utilitários de data.
 
-Nada foi removido nem mudou de tipo.
+Nada foi removido nem mudou de tipo na fase 1. Mudanças da fase 2: seção 7.
+
+---
+
+## 7. Correções da revisão de fidelidade (fase 2)
+
+Versão dos modelos: **`pop-0.4/2`** (`VERSAO_MODELOS`; `VERSAO_MODELOS_V1 = 'pop-0.4/1'` mantida). Episódios com respostas na /1 continuam montando: o id antigo do TCLE da admissão (`A.tcle`, em `ADM_LEGADO.tcle`) ainda abre o HS5 se for "não". Testes novos em `tests/dominio/revisao-fidelidade.test.ts` (um ou mais por item), mais ajustes em `hardstops`, `jornada`, `pendencias-indicadores` e `utilitarios-modelos`.
+
+| # | Achado | O que mudou (ids em `modelos/ids.ts`) |
+| --- | --- | --- |
+| 1 | Medicação mudada depois do D-7 | D-2 `D2.mudanca_medicacao` = sim e admissão `A.mudou_remedio` = sim exigem as classes que mudaram (`D2.mudanca_classes` / `A.mudou_classes`, múltipla com as 10 classes do §1.B + "outra" e, na admissão, "estado de saúde"; "outra"/"estado de saúde" exigem observação) e, para cada classe marcada, o registro atualizado no formato do D-7 (`D2.med.<classe>` / `A.med.<classe>`; `medicamentoD2(c)`, `medicamentoAdmissao(c)`). O registro efetivo de cada classe é o mais recente (D-7 → D-2 → admissão) e alimenta alertas (mesmos ids `d7:B.<item>`, origem = bloco que registrou), dots I/S/D, HS6 e a janela do GLP-1. Na admissão, `A.usa_glp1` + `A.glp1_ultima_dose` (data, não pode ser futura) recalculam a janela (a data é exigida com "usa = sim"); "não usa" contra GLP-1 registrado em uso, sem a mudança (classe GLP-1) registrada, impede concluir a admissão. Os alertas abertos no D-2 e na admissão precisam estar comunicados antes de concluir o bloco. O alerta do D-2 continua [S]. |
+| 2 | Correção não apaga alerta | Trilha por assinatura (nível + título + descrição): mudou o conteúdo, a comunicação e a conduta anteriores deixam de valer (`Alerta.atualizadoEm`, `comunicacaoPendente`, `condutaDesatualizada`). Alerta desativado por correção continua exigindo comunicação (aparece em `alertas` e nas pendências). Corrigir item crítico do D-7 já concluído (`A.olho_paciente`, α-bloqueador, anticoagulante, antiagregante, GLP-1) exige observação. `B.conduta_alertas = nao_se_aplica` é recusado enquanto houver alerta HS6 ativo, e alerta desativado não dispensa a comunicação. |
+| 3 | TCLE da admissão em dois itens | `A.tcle_assinado` ("não" → HS5) e `A.tcle_olho` ("não" → HS3, resolução escrita do cirurgião). `ADM.tcle` aponta para `A.tcle_assinado`. |
+| 4 | Segundo olho | `A.primeiro_segundo = segundo` exige `A.data_primeiro_olho` (POP §11); a identificação por extenso usa a resposta e a data. Resposta diferente do que o painel detecta (ou data diferente) → ALERTA `d7:A.primeiro_segundo`. |
+| 5 | Confirmações que registram divergência | Admissão `A.alergias_reconfirmadas` sim/não; "não" exige `A.alergia_nova`, que entra no dot A e na verbalização do Time Out (`EpisodioVisao.verbalizacaoTimeOut`). Time Out `TO.procedimento` sim/não; "não" abre a parte escrita do `HS_LIO_TIME_OUT` (agora "Divergência no Time Out"), quase-evento categoria `outro`, resolução escrita do cirurgião. Admissão `A.jejum_medicacoes` sim/não; "não" → ALERTA `admissao:A.jejum_medicacoes`, conduta `pendente` (POP §14). |
+| 6 | Dúvida no consentimento do Sign In | `SI.consentimento = nao` abre a parte escrita do HS5: só fecha com `hardstop.resolver` do cirurgião. |
+| 7 | Erro do olho no quiz | Prazo da ligação: mesmo dia (pergunta P2). |
+| 8 | Quarentena da LIO | ALERTA `lente:quarentena:<ciclo>` com prazo no mesmo dia; exige comunicação (quem, quando, via). A resolução escrita da quarentena conta como conduta. |
+| 9 | Déficit cognitivo | `A.identificacao` e `SI.identificacao` viraram `opcao`: sim / "confirmado com o acompanhante ou representante" / não ("não" → HS3). "Acompanhante" só é aceito com demência = sim no D-7. D-7 `A.olho_acompanhante` (tipo olho, exigido com demência); diferente do pedido ou "não sabe" → ALERTA `d7:A.olho_acompanhante`. |
+| 10 | Expectativa sem conduta (§1.F) | Com o alerta `d7:F.sem_oculos` sem conduta válida, `materiais.enviar` tira os materiais do TCLE (`video_tcle`, `link_tcle`) e não gera mensagem; só materiais de preparo (sem nenhum: `ESTADO` com `MOTIVO_TCLE_RETIDO`). `previaMateriais` devolve `avisos`. Pendência `tcle.retido_expectativa` (cirurgião). |
+| 11 | Midriático | HS3, HS4, HS5, HS6 e HS7 também bloqueiam `marcar:sign_in.B.midriatico`. |
+| 12 | Página do paciente | `tcleLink` nulo até a aprovação no quiz, ou até um teach-back registrado depois da última reprovação; sempre nulo com o TCLE retido (`tcleLiberadoNaPagina`). |
+| 13 | Dot Q | Gatilho `C.baixa_visao_contralateral` (novo) ou olho único; ambliopia sozinha não dá Q. `C.olho_unico_qual` (olho único / ambliopia). |
+| 14 | Olho único (§11) | `D2.olho_unico_conversa`, `ALTA.olho_unico_apoio_domiciliar`, `ALTA.olho_unico_ligacao_noite`: visíveis, `pendente` "[S] POP §11 (olho único): depende do diretor técnico.", não obrigatórios. `TO.olho_unico_preceptor` (confirmação) obrigatório no Time Out com olho único (POP §14, item decidido). Condição por referência entre modelos: `CONDICAO_OLHO_UNICO = { itemId: 'd7:C.olho_unico_qual', valores: ['olho_unico'] }`. |
+| 15 | Pulseira sem prontuário | `PRONTUÁRIO NÃO REGISTRADO`. |
+| 17 | Acompanhante reserva | `E.acompanhante_reserva_situacao`: "registrado" (exige `E.acompanhante_reserva`) ou "nenhum disponível" (exige observação; pendência `d7.sem_acompanhante_reserva`, não alerta). |
+| 18 | Homônimo | Texto do HS inclui "cirurgias não consecutivas, se possível". |
+| 19 | HS5 | Abre na admissão; antes é pendência (pergunta P3 sobre HS9). |
+| 20 | Avisos com HS9/HS_ORDEM abertos | Mantido e marcado [S] (seção 9). |
+| 21 | Tratamento | Mensagem do TCLE: "A Dra. <nome> esclarece antes." / "O Dr. <nome> ..." pelo prefixo do cadastro ([S]). |
+| 22 | Indicadores | `quase_evento.registrar` aceita `categoria?: 'identidade' \| 'olho' \| 'lio' \| 'outro'` (`CategoriaQuaseEvento` em `dominio/contrato.ts`). Indicador 4 conta só identidade, olho e LIO (automáticos: HS1 e leitura do Time Out = `lio`; HS3 = `olho` se a fonte é TCLE/marcação, senão `identidade`; HS2, HS8 e os demais = `outro`; eventos antigos sem categoria: HS1/HS_LIO_TIME_OUT = `lio`, HS3 = `identidade`). Indicador 7: denominador = cirurgias realizadas. |
+| 23 | Plausibilidade do cp2 | Ajuda sem números: "Critérios a definir pelo cirurgião [RASCUNHO]". |
+
+Também: datas no futuro só são recusadas quando o item se aplica (`A.data_primeiro_olho` com "segundo"; `A.glp1_ultima_dose` com "usa = sim"); o preenchedor de `dev/` responde itens condicionais mesmo quando não se aplicam.
+
+---
+
+## 8. Para o orquestrador ligar
+
+Não toquei em `_shared/api`, `contrato.ts` da API, `web/` nem `dev/`.
+
+1. **`dev/preencher.ts` (faz os 2 testes + 1 suíte de `tests/api` voltarem a passar)**: incluir `ADM.jejum` e `ADM.alergias` em `SIM_SEGURO`. Hoje o preenchedor responde "não" ao jejum, o que agora gera ALERTA não comunicado e trava a conclusão da admissão ("Alerta não comunicado ao cirurgião: Jejum ou medicações fora da orientação."). Conferido: com essas duas linhas, `tests/api` passa 88/88.
+2. **Rótulo na interface**: `ROTULO_HARD_STOP_CURTO.HS_LIO_TIME_OUT` → "Divergência no Time Out" (agora cobre LIO e procedimento).
+3. **`exigidoQuando` entre modelos**: `itemId` pode vir como `'<modelo>:<itemId>'` (ex.: `'d7:C.olho_unico_qual'`). O renderizador deve procurar a resposta no outro modelo (o domínio já faz; `bloco.concluir` e `faltam` estão certos).
+4. **Itens de identificação** (`A.identificacao`, `SI.identificacao`): agora `opcao` (sim / acompanhante / não). Mostrar "acompanhante" só com demência registrada.
+5. **Time Out**: exibir `EpisodioVisao.verbalizacaoTimeOut` (alergias, inclusive a nova da admissão; α-bloqueador; anticoagulação) na tela da sala.
+6. **Alertas**: exibir `comunicacaoPendente` e `condutaDesatualizada`; alertas `ativo: false` com `comunicacaoPendente` ainda precisam do botão "comunicar".
+7. **Contrato da API**: `quase_evento.registrar` com `categoria` opcional; intercorrência com `neverEvent` opcional (pendente da fase 1); `materiais.previa` repassar `avisos`.
+8. **Seed dos modelos**: `modelosAtivos` só semeia quando falta o id do modelo; bancos com `pop-0.4/1` precisam receber a /2 (nova versão ativa).
+9. **`G.materiais = enviados`** só depois de `materiais.enviar` com a mensagem do TCLE (envio só de preparo, com TCLE retido, não conta).
+10. Evitei contextos novos em `exigidoQuando` e códigos novos de hard stop porque a interface tem `Record` exaustivos; se quiserem um código próprio para "procedimento divergente no Time Out", é mudança coordenada domínio + interface.
+
+---
+
+## 9. Novas perguntas e interpretações [S] (fase 2)
+
+- **P1 [S]** Mudança de medicação no D-2: tratada como ALERTA (comunicar antes de concluir o D-2). O POP só diz "avisar o cirurgião".
+- **P2** Erro do olho no quiz: o POP pede ligação "no mesmo dia" (§6), mas outro trecho fala em "1 dia útil". Implementado mesmo dia. Qual vale?
+- **P3** Hard stop recusado por regra de ordem (HS9 e HS_ORDEM_SIGN_IN) não gera quase-evento. O §13.9 diz "todo hard stop acionado é registrado como quase-evento". Devem gerar?
+- **P4 [S]** Avisos à família continuam com HS9/HS_ORDEM_SIGN_IN abertos (estão abertos por construção durante o Sign In).
+- **P5 [S]** "A Dra." / "O Dr." pelo prefixo do cadastro do cirurgião (o texto aprovado só traz "Dr.").
+- **P6** Sem texto aprovado para enviar só os materiais de preparo (TCLE retido): o domínio registra o envio sem gerar mensagem. Qual texto?
+- **P7 [S]** Time Out com déficit cognitivo: "paciente confirma" aceita só sim/não; confirmação pelo acompanhante ficou só na admissão e no Sign In (é o que a revisão pediu).
+- **P8** Quase-evento registrado à mão sem categoria não entra no indicador 4. A interface deve tornar a categoria obrigatória?
+- **P9 [S]** Olho único com "qual" (olho único / ambliopia) sem resposta: tratado como olho único (mais conservador).
+- **P10 [S]** Divergência de procedimento no Time Out usa o código `HS_LIO_TIME_OUT` (sem código novo, ver seção 8 item 10).
+- **P11 [S]** Conduta escrita antes de uma mudança do alerta deixa de valer; toda mudança de conteúdo do alerta pede nova comunicação.
+- **P12 [S]** Itens de olho único dependentes do diretor técnico ficam visíveis, mas não obrigatórios, até a decisão.
+- **P13 [S]** Admissão pergunta "usa GLP-1?" sempre (`A.usa_glp1`), para reconferir a data da última dose (POP §9.A), mesmo sem mudança declarada.
+- **P14 [S]** Indicador 4: biometria ausente (HS2) e troca de LIO no D0 (HS8) contam como `outro`, não como divergência de LIO.
