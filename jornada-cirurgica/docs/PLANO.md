@@ -116,9 +116,33 @@ Resultado dos testes e da verificação ponta a ponta: seção 8.
 | WhatsApp da concierge e escala do telefone fora do horário | Página do paciente, folha de alta | 4 |
 | NSP, observação do Time Out, canal de quase-eventos | Indicadores 2 e 4 | 5 |
 
-## 8. Resultado dos testes
+## 8. Resultado dos testes (12/10/2026, local, dados fictícios)
 
-(Preenchido ao final da construção.)
+| Conjunto | Testes | O que cobre |
+| --- | --- | --- |
+| Domínio (`tests/dominio`) | 137 | Modelos v1, cada hard stop disparado e resolvido, conferência cega, jornada D-7 → alta, ordem e hora real, alertas, dots, pendências, indicadores, quiz, avisos em ensaio e bloqueio por intercorrência |
+| Banco (`tests/banco`) | 94 | Migrations do zero e reaplicadas, "só cresce" (inclusive como administrador), RLS por papel e visibilidade, matriz de permissões, sem acesso de `anon`/`authenticated`, fila sem entrega dupla |
+| API (`tests/api`) | 69 | Fluxo completo pela API, conferente varrendo todas as leituras sem achar os valores plantados, autora do checkpoint 1 recusada no 2, CPF nunca gravado nem logado, Datasigh só GET, limite de taxa, PIN, conflito de versão, CORS |
+| Interface (`web/src`) | 63 | Renderizador de checklist, identificação (olho por extenso, dots com letra), formulário cego, página do paciente sem o olho, quiz, impressão, gestão |
+| Ponta a ponta no navegador (`tests/e2e`, tablet) | 5 | Lista do dia, conferência cega com quarentena, sala, página do paciente, checklist em branco sem sessão |
+
+Total: 368 testes, todos passando. Verificação de tipos e build da interface sem erros.
+
+Não testado aqui: Deno real (as Edge Functions foram verificadas com tipos simulados), Postgres 17 e o usuário da `SUPABASE_DB_URL` do Supabase, Datasigh real, Meta real.
+
+### Interpretações a confirmar
+
+Além de R1–R7 (`DECISOES.md`), o motor de regras registrou 23 interpretações em `notas-agentes/dominio.md` §4. As que mais afetam o fluxo:
+
+- Janela do GLP-1: semanal com última aplicação ≥ 7 dias antes; diário sem uso na véspera nem no dia.
+- Quarentena "manter plano": no checkpoint 1 refaz chegada, cp1 e cp2; no cp2 refaz só o cp2 cego; no Time Out a caixa é reconferida por duas pessoas antes de nova leitura.
+- Conferência cega bloqueada para quem tocou o checkpoint 1 em qualquer ciclo do episódio.
+- Hard stops 3 (identidade/olho) e 7 (olho vermelho) só fecham com resolução escrita do cirurgião.
+- Hard stop 6 inclui antiagregante.
+- "NOME PARECIDO NO DIA" para nomes parecidos (o POP só traz "HOMÔNIMO NO DIA"); limiar de similaridade 0,9, configurável.
+- Aviso de fim de cirurgia sem tempo configurado: sai só "Agora é a recuperação." (texto aprovado sem a oração da previsão).
+- Alerta de expectativa só para LIO monofocal.
+- Validade "aaaa-mm" da LIO lida como o primeiro dia do mês.
 
 ## 9. Para colocar no ar: o que depende do seu "ok"
 
