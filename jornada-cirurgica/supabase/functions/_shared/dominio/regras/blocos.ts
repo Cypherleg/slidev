@@ -1,11 +1,12 @@
 // Blocos do episódio: disponibilidade, itens exigidos, o que falta e impedimentos de conclusão.
 
-import { D7, ITENS_ALERGIA, SO } from '../modelos/ids.ts'
+import { ADM, D7, ITENS_ALERGIA, SO } from '../modelos/ids.ts'
 import type { BlocoVisao, ItemModelo, ModeloId, SituacaoBloco, ValorAlergia } from '../tipos.ts'
 import { ORDEM_MODELOS } from '../tipos.ts'
 import {
   cicloAtual,
   concluido,
+  condicaoItemVale,
   conclusao,
   cp1Conclusao,
   dadosChegada,
@@ -26,7 +27,8 @@ import {
   valor,
 } from '../estado/consultas.ts'
 import type { EstadoInterno } from '../estado/tipos.ts'
-import { alertaComunicado, avaliarAlertasAtivos } from './alertas.ts'
+import { alertasSemComunicacao } from './alertas.ts'
+import { glp1Efetivo, mudancasInformadas } from './medicamentos.ts'
 import { calcularDots } from './dots.ts'
 import { bloqueiosPara } from './hardstops.ts'
 import { calcularIdentificacao } from './identificacao.ts'
@@ -35,12 +37,11 @@ import { validadePosterior } from './lente.ts'
 /** Item exigido agora (obrigatório ou com condição satisfeita). */
 export function itemExigido(est: EstadoInterno, modeloId: ModeloId, item: ItemModelo): boolean {
   if (item.obrigatorio) return true
+  // Item pendente (decisão em aberto no POP) e não obrigatório nunca é exigido: a condição só diz quando aparece.
+  if (item.pendente) return false
   const cond = item.exigidoQuando
   if (!cond) return false
-  if ('itemId' in cond) {
-    const v = valor(est, modeloId, cond.itemId)
-    return typeof v === 'string' && cond.valores.includes(v)
-  }
+  if ('itemId' in cond) return condicaoItemVale(est, modeloId, cond)
   switch (cond.contexto) {
     case 'homonimo_no_dia':
       return calcularIdentificacao(est).exigeNomeMae
@@ -118,17 +119,20 @@ export function impedimentosConclusao(est: EstadoInterno, modeloId: ModeloId): s
   const falta = faltam(est, modeloId)
   if (falta.length) r.push(`${falta.length} item(ns) exigido(s) sem resposta.`)
   for (const i of itensDoModelo(m)) {
-    if (i.exigeSim && marcado(est, modeloId, i.id) && valor(est, modeloId, i.id) !== 'sim') {
+    if (i.exigeSim && marcado(est, modeloId, i.id) && valor(est, modeloId, i.id) === 'nao') {
       r.push(`Respondido "não": ${i.texto}.`)
+    }
+  }
+  // Alertas: comunicados ao cirurgião antes de concluir (POP §1; "como no D-7" também no D-2 e na admissão).
+  if (modeloId === 'd7' || modeloId === 'd2' || modeloId === 'admissao') {
+    for (const a of alertasSemComunicacao(est)) {
+      r.push(`${a.inativo ? 'Correção de alerta' : 'Alerta'} não comunicado ao cirurgião: ${a.titulo}.`)
     }
   }
   for (const h of bloqueiosPara(est, `concluir:${modeloId}`)) r.push(`Hard stop: ${h.titulo}.`)
 
   switch (modeloId) {
     case 'd7': {
-      for (const a of avaliarAlertasAtivos(est)) {
-        if (a.nivel === 'alerta' && !alertaComunicado(est, a.id)) r.push(`Alerta não comunicado ao cirurgião: ${a.titulo}.`)
-      }
       const inc = incoerenciaAlergias(est)
       if (inc) r.push(inc)
       break
@@ -151,6 +155,14 @@ export function impedimentosConclusao(est: EstadoInterno, modeloId: ModeloId): s
     case 'd2': {
       const e = etapaLente(est)
       if (e !== 'cp2_confere' && e !== 'time_out_confere') r.push('Lente sem checkpoint 2 concluído sem divergência.')
+      break
+    }
+    case 'admissao': {
+      // Reconferência do GLP-1 no D0: "não usa" contra registro "usa" sem a mudança registrada.
+      const g = glp1Efetivo(est)
+      if (valor(est, 'admissao', ADM.usaGlp1) === 'nao' && g?.valor.uso === 'usa' && !mudancasInformadas(est, 'admissao').classes.includes('glp1')) {
+        r.push('GLP-1 registrado em uso, mas a admissão diz que não usa: registre a mudança de medicação (classe GLP-1) ou corrija a resposta.')
+      }
       break
     }
     case 'time_out': {

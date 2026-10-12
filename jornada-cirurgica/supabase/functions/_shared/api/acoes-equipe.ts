@@ -43,7 +43,8 @@ import { ErroMetodoProibido } from './datasigh.ts'
 import type { Executor } from './db.ts'
 import { erro } from './erros.ts'
 import { gerarTokenLink, hashToken, protegerMensagens } from './link-paciente.ts'
-import { emitirTokenAtor, formatoPinValido, gerarHashPin, pinAceitavel, verificarHashPin, verificarTokenAtor } from './pin.ts'
+import { emitirTokenAtor, emitirTokenConfirmacao, formatoPinValido, gerarHashPin, pinAceitavel, verificarHashPin, verificarTokenConfirmacao } from './pin.ts'
+import { concluirTentativaPin, consumirConsultaCpf, reservarTentativaPin, type FinalidadePin } from './limites.ts'
 import {
   atualizarCampoPaciente,
   atualizarProjecao,
@@ -91,6 +92,7 @@ import {
   entradaTemConferencia1,
   type ContextoReq,
 } from './servico.ts'
+import type { MembroDb } from './repositorio.ts'
 import * as v from './validar.ts'
 
 type Impl = { [A in AcaoEquipe]: (ctx: ContextoReq, dados: v.Obj) => Promise<AcoesEquipe[A]['S']> }
@@ -157,9 +159,18 @@ function versao(d: v.Obj): number {
   return v.inteiro(d.versao, 'versao', 0, 10_000_000)
 }
 
-/** Leitura em lote de estados completos (como jornada_sistema) para listas sem dado de conferência. */
+/** Leitura em lote de estados completos (como jornada_sistema): só indicadores (gestora, cirurgião). */
 async function estadosCompletos(tx: Executor, ids: string[]) {
   const entradas = await carregarEntradas(tx, ids, { tipo: 'completo' })
+  return ids.map(id => entradas.get(id)).filter((e): e is NonNullable<typeof e> => Boolean(e)).map(e => ({ entrada: e, estado: montarEstado(e) }))
+}
+
+/**
+ * Estados como o ator os vê (RLS de jornada_api), igual ao `episodio.obter`: listas não carregam
+ * nada derivado de conferência que o ator não pode ver (ex.: hard stop do checkpoint 1 para a conferente).
+ */
+async function estadosDoAtor(tx: Executor, ctx: ContextoReq, ids: string[]) {
+  const entradas = await carregarEntradas(tx, ids, { tipo: 'ator', ator: atorDb(ctx) })
   return ids.map(id => entradas.get(id)).filter((e): e is NonNullable<typeof e> => Boolean(e)).map(e => ({ entrada: e, estado: montarEstado(e) }))
 }
 
@@ -260,6 +271,34 @@ function validarConfigParcial(x: unknown): Partial<ConfigJornada> {
   return out as Partial<ConfigJornada>
 }
 
+/**
+ * Confere o PIN de `membroId` com limite à prova de concorrência (limites.ts): a tentativa é
+ * reservada e confirmada ANTES do hash; o resultado é registrado depois. Devolve o membro.
+ */
+async function verificarPinDe(ctx: ContextoReq, membroId: string, pin: unknown, finalidade: FinalidadePin, mensagem = 'PIN não confere.'): Promise<MembroDb> {
+  if (finalidade !== 'definir' && !formatoPinValido(pin)) throw erro('validacao', 'O PIN tem 6 dígitos.', { campo: 'pin' })
+  const quem = { atorId: ctx.membro.id, sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId }
+  const reserva = await reservarTentativaPin(ctx.deps, quem, membroId, finalidade, ctx.agora)
+  const ok = Boolean(reserva.alvo?.ativo) && typeof pin === 'string' && (await verificarHashPin(ctx.deps.config.segredoAtor, pin, reserva.hash))
+  await concluirTentativaPin(ctx.deps, quem, membroId, reserva, ok, finalidade)
+  if (!ok || !reserva.alvo) throw erro('sem_permissao', mensagem, { motivo: 'pin' })
+  return reserva.alvo
+}
+
+/** A sessão (login) registrou ou consultou dados do checkpoint 1 do episódio? (como jornada_sistema) */
+async function sessaoTocouConferencia1(tx: Executor, sessaoUsuarioId: string, episodioId: string): Promise<boolean> {
+  const [r] = await tx.consulta<{ tocou: boolean }>(
+    `select (
+       exists (select 1 from ${S}.acessos where episodio_id = $2::uuid and recurso = 'lente_conferencia_1' and (ator_id = $1::uuid or sessao_usuario_id = $1::uuid))
+       or exists (select 1 from ${S}.eventos where episodio_id = $2::uuid and (autor_id = $1::uuid or sessao_usuario_id = $1::uuid)
+                  and (visibilidade = 'conferencia_1' or tipo in ('lente.plano_registrado', 'lente.chegada_registrada')))
+       or exists (select 1 from ${S}.lente_registros where episodio_id = $2::uuid and autor_id = $1::uuid and etapa in ('plano', 'chegada'))
+     ) as tocou`,
+    [sessaoUsuarioId, episodioId],
+  )
+  return Boolean(r?.tocou)
+}
+
 export const acoesEquipe: Impl = {
   // -------------------------------------------------------------------------
   // Sessão, ator, PIN
@@ -282,32 +321,27 @@ export const acoesEquipe: Impl = {
 
   async 'ator.pin'(ctx, d) {
     const membroId = v.uuid(d.membroId, 'membroId')
-    const pin = d.pin
-    if (!formatoPinValido(pin)) throw erro('validacao', 'O PIN tem 6 dígitos.', { campo: 'pin' })
+    const alvo = await verificarPinDe(ctx, membroId, d.pin, 'ator')
     const cfg = ctx.deps.config
-    const agoraMs = ctx.agora.getTime()
-    const desde = new Date(agoraMs - cfg.janelaPinMin * 60_000).toISOString()
-    const resultado = await ctx.deps.db.transacao(async tx => {
-      await comoSistema(tx)
-      const falhasAlvo = await contarAcessos(tx, { recurso: 'pin_falha', desde, alvo: membroId })
-      const falhasSessao = await contarAcessos(tx, { recurso: 'pin_falha', desde, sessaoUsuarioId: ctx.membro.id })
-      if (falhasAlvo >= cfg.falhasPinPorAlvo || falhasSessao >= cfg.falhasPinPorSessao) return { tipo: 'bloqueado' as const }
-      const alvo = await buscarMembro(tx, membroId)
-      const hash = alvo && alvo.ativo ? await pinHashDoMembro(tx, alvo.id) : null
-      const ok = Boolean(alvo && alvo.ativo) && (await verificarHashPin(cfg.segredoAtor, pin, hash))
-      const quem = { atorId: ctx.membro.id, sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId }
-      await comoApi(tx, quem)
-      if (!ok || !alvo) {
-        await registrarAcesso(tx, quem, 'pin_falha', { detalhe: { alvo: membroId } })
-        return { tipo: 'falha' as const }
-      }
-      await registrarAcesso(tx, quem, 'ator_pin', { detalhe: { alvo: membroId } })
-      return { tipo: 'ok' as const, alvo }
-    })
-    if (resultado.tipo === 'bloqueado') throw erro('limite_taxa', 'Muitas tentativas de PIN. Aguarde alguns minutos.')
-    if (resultado.tipo === 'falha') throw erro('sem_permissao', 'PIN não confere.', { motivo: 'pin' })
-    const { token, expiraEm } = await emitirTokenAtor(cfg.segredoAtor, { membroId: resultado.alvo.id, sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId }, cfg.atorTtlMin, agoraMs)
-    return { token, expiraEm, ator: { id: resultado.alvo.id, nome: resultado.alvo.nome, papeis: resultado.alvo.papeis } }
+    const { token, expiraEm } = await emitirTokenAtor(cfg.segredoAtor, { membroId: alvo.id, sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId }, cfg.atorTtlMin, ctx.agora.getTime())
+    return { token, expiraEm, ator: { id: alvo.id, nome: alvo.nome, papeis: alvo.papeis } }
+  },
+
+  async 'ator.confirmacao'(ctx, d) {
+    // Token de finalidade própria para confirmar a leitura em voz alta (Sign In, Time Out):
+    // preso ao episódio, ao bloco, à sessão e ao aparelho; curto; uso único; nunca vale como ator.
+    const membroId = v.uuid(d.membroId, 'membroId')
+    const episodioId = v.uuid(d.episodioId, 'episodioId')
+    const modelo = v.umDe(d.modelo, 'modelo', ORDEM_MODELOS)
+    const alvo = await verificarPinDe(ctx, membroId, d.pin, 'confirmacao')
+    const cfg = ctx.deps.config
+    const { token, expiraEm } = await emitirTokenConfirmacao(
+      cfg.segredoAtor,
+      { membroId: alvo.id, sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId, episodioId, modelo },
+      cfg.confirmacaoTtlMin,
+      ctx.agora.getTime(),
+    )
+    return { token, expiraEm, ator: { id: alvo.id, nome: alvo.nome, papeis: alvo.papeis } }
   },
 
   async 'ator.encerrar'(ctx) {
@@ -328,31 +362,19 @@ export const acoesEquipe: Impl = {
     if (!pinAceitavel(d.pinNovo)) throw erro('validacao', 'PIN inválido: use 6 dígitos, sem sequência nem repetição.', { campo: 'pinNovo' })
     const pinNovo = d.pinNovo
     const pinAtual = d.pinAtual === undefined || d.pinAtual === null ? null : d.pinAtual
-    const desde = new Date(ctx.agora.getTime() - cfg.janelaPinMin * 60_000).toISOString()
     const quem = { atorId: ctx.membro.id, sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId }
-    const r = await ctx.deps.db.transacao(async tx => {
+    const temPin = await ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
-      const eu = await buscarMembro(tx, ctx.membro.id)
-      if (!eu || !eu.ativo) return 'sem_permissao' as const
-      const hashAtual = await pinHashDoMembro(tx, eu.id)
-      if (hashAtual) {
-        const falhas = await contarAcessos(tx, { recurso: 'pin_falha', desde, alvo: eu.id })
-        if (falhas >= cfg.falhasPinPorAlvo) return 'bloqueado' as const
-        if (!formatoPinValido(pinAtual) || !(await verificarHashPin(cfg.segredoAtor, pinAtual, hashAtual))) {
-          await comoApi(tx, quem)
-          await registrarAcesso(tx, quem, 'pin_falha', { detalhe: { alvo: eu.id } })
-          return 'falha' as const
-        }
-      }
-      const hash = await gerarHashPin(cfg.segredoAtor, pinNovo, cfg.iteracoesPin)
-      await comoApi(tx, quem)
-      const u = await tx.consulta(`update ${S}.membros set pin_hash = $2, pin_atualizado_em = now(), atualizado_em = now() where user_id = $1::uuid returning user_id`, [eu.id, hash])
-      if (!u.length) throw erro('sem_permissao')
-      return 'ok' as const
+      return (await pinHashDoMembro(tx, ctx.membro.id)) !== null
     })
-    if (r === 'bloqueado') throw erro('limite_taxa', 'Muitas tentativas de PIN. Aguarde alguns minutos.')
-    if (r === 'falha') throw erro('sem_permissao', 'PIN atual não confere.', { motivo: 'pin' })
-    if (r === 'sem_permissao') throw erro('sem_permissao')
+    // Com PIN definido, o PIN atual passa pelo mesmo limite (reserva confirmada antes de conferir).
+    if (temPin) await verificarPinDe(ctx, ctx.membro.id, pinAtual, 'definir', 'PIN atual não confere.')
+    const hash = await gerarHashPin(cfg.segredoAtor, pinNovo, cfg.iteracoesPin)
+    await ctx.deps.db.transacao(async tx => {
+      await comoApi(tx, quem)
+      const u = await tx.consulta(`update ${S}.membros set pin_hash = $2, pin_atualizado_em = now(), atualizado_em = now() where user_id = $1::uuid and ativo returning user_id`, [ctx.membro.id, hash])
+      if (!u.length) throw erro('sem_permissao')
+    })
     return { ok: true }
   },
 
@@ -371,15 +393,7 @@ export const acoesEquipe: Impl = {
   async 'paciente.buscar_cpf'(ctx, d) {
     papelAutor(ctx, 'paciente.cadastrado')
     const cpf = cpfValidado(d.cpf)
-    const cfg = ctx.deps.config
-    const desde = new Date(ctx.agora.getTime() - 3600_000).toISOString()
-    await ctx.deps.db.transacao(async tx => {
-      await comoSistema(tx)
-      const n = await contarAcessos(tx, { recurso: 'cpf_consulta', desde, sessaoUsuarioId: ctx.membro.id })
-      if (n >= cfg.cpfConsultasHora) throw erro('limite_taxa', 'Limite de consultas de CPF por hora atingido.')
-      await comoApi(tx, atorDb(ctx))
-      await registrarAcesso(tx, atorDb(ctx), 'cpf_consulta', { detalhe: {} })
-    })
+    await consumirConsultaCpf(ctx.deps, atorDb(ctx), ctx.agora, 'busca')
     const cpfHmac = await hmacCpf(ctx, cpf)
     let datasigh: AcoesEquipe['paciente.buscar_cpf']['S']['datasigh']
     try {
@@ -401,7 +415,11 @@ export const acoesEquipe: Impl = {
   },
 
   async 'paciente.cadastrar'(ctx, d) {
+    // Papel ANTES de qualquer busca: sem ele, nenhuma resposta distingue CPF cadastrado de novo.
+    papelAutor(ctx, 'paciente.cadastrado')
     const cpf = d.cpf === null || d.cpf === undefined || d.cpf === '' ? null : cpfValidado(d.cpf)
+    // Com CPF, o cadastro também é uma consulta: mesmo limite por hora e mesmo registro em acessos.
+    if (cpf) await consumirConsultaCpf(ctx.deps, atorDb(ctx), ctx.agora, 'cadastro')
     const cpfHmac = cpf ? await hmacCpf(ctx, cpf) : null
     const entrada = {
       pacienteId: ctx.deps.gerarId(),
@@ -416,7 +434,8 @@ export const acoesEquipe: Impl = {
     return ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
       const existente = await buscarPacientePorChave(tx, { cpfHmac, datasighId: entrada.datasighId })
-      if (existente) throw erro('validacao', 'Paciente já cadastrado neste painel.', { pacienteId: existente.id })
+      // Sem o id: quem precisa do cadastro existente usa a busca por CPF (com limite e registro).
+      if (existente) throw erro('validacao', 'Já existe cadastro com este CPF ou id do Datasigh. Use a busca por CPF.', { motivo: 'ja_cadastrado' })
       const config = await lerConfigJornada(tx)
       const evento = cadastrarPaciente(entrada, contextoDecisao(ctx, config))
       await comoApi(tx, atorDb(ctx))
@@ -538,15 +557,36 @@ export const acoesEquipe: Impl = {
 
   async 'bloco.concluir'(ctx, d) {
     const modelo = v.umDe(d.modelo, 'modelo', ORDEM_MODELOS)
-    const leitorId = v.uuidOpcional(d.leitorId, 'leitorId')
-    let confirmadorId: string | null = null
+    const episodioId = v.uuid(d.episodioId, 'episodioId')
+    // Quem lê em voz alta é quem conclui o bloco (o ator, com ou sem troca por PIN): sem prova de
+    // outra pessoa, `leitorId` diferente do ator é recusado.
+    const leitorBruto = v.uuidOpcional(d.leitorId, 'leitorId')
+    if (leitorBruto && leitorBruto !== ctx.ator.id) throw erro('validacao', 'Quem lê em voz alta é quem conclui o bloco: entre com o PIN de quem leu.', { campo: 'leitorId' })
+    const leitorId = leitorBruto
+    // Confirmação: só o token de `ator.confirmacao` deste episódio e bloco, nesta sessão e aparelho, uma vez.
+    let confirmacao: { membroId: string; jti: string } | null = null
     if (d.confirmadorToken !== undefined && d.confirmadorToken !== null && d.confirmadorToken !== '') {
-      if (typeof d.confirmadorToken !== 'string') throw erro('validacao', 'Campo inválido: confirmadorToken.')
-      const t = await verificarTokenAtor(ctx.deps.config.segredoAtor, d.confirmadorToken, { sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId }, ctx.agora.getTime())
-      if (!t) throw erro('validacao', 'Confirmação por PIN inválida ou expirada.', { campo: 'confirmadorToken' })
-      confirmadorId = t.membroId
+      if (typeof d.confirmadorToken !== 'string') throw erro('validacao', 'Campo inválido: confirmadorToken.', { campo: 'confirmadorToken' })
+      const t = await verificarTokenConfirmacao(
+        ctx.deps.config.segredoAtor,
+        d.confirmadorToken,
+        { sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId, episodioId, modelo },
+        ctx.agora.getTime(),
+      )
+      if (!t) throw erro('validacao', 'Confirmação por PIN inválida ou expirada: peça o PIN de quem confirmou de novo.', { campo: 'confirmadorToken' })
+      confirmacao = { membroId: t.membroId, jti: t.jti }
     }
-    return executarComando(ctx, v.uuid(d.episodioId, 'episodioId'), versao(d), () => ({ tipo: 'bloco.concluir', modelo, leitorId, confirmadorId }))
+    return executarComando(ctx, episodioId, versao(d), () => ({ tipo: 'bloco.concluir', modelo, leitorId, confirmadorId: confirmacao?.membroId ?? null }), {
+      antesDeDecidir: async tx => {
+        if (!confirmacao) return
+        // Serializado pela trava do episódio (o token é preso ao episódio): sem corrida no uso único.
+        const usado = await tx.consulta(`select 1 from ${S}.acessos where recurso = 'confirmacao_usada' and episodio_id = $1::uuid and detalhe->>'jti' = $2 limit 1`, [episodioId, confirmacao.jti])
+        if (usado.length) throw erro('validacao', 'Esta confirmação por PIN já foi usada. Peça o PIN de quem confirmou de novo.', { campo: 'confirmadorToken', motivo: 'usado' })
+      },
+      antesDeGravar: async tx => {
+        if (confirmacao) await registrarAcesso(tx, atorDb(ctx), 'confirmacao_usada', { episodioId, detalhe: { jti: confirmacao.jti, modelo, confirmador: confirmacao.membroId } })
+      },
+    })
   },
 
   async 'alerta.comunicar'(ctx, d) {
@@ -628,7 +668,14 @@ export const acoesEquipe: Impl = {
 
   async 'lente.cp2'(ctx, d) {
     const valores = valoresLente(d.valores, 'valores')
-    return executarComando(ctx, v.uuid(d.episodioId, 'episodioId'), versao(d), () => ({ tipo: 'lente.cp2', valores }))
+    const episodioId = v.uuid(d.episodioId, 'episodioId')
+    // [S] Decisão conservadora: o checkpoint 2 só com o login da PRÓPRIA conferente (sem troca por
+    // PIN) e nunca numa sessão em que o checkpoint 1 deste episódio foi registrado ou consultado.
+    if (ctx.ator.id !== ctx.membro.id)
+      throw erro('conferencia_cega', 'O checkpoint 2 é registrado com o login da própria conferente, sem troca por PIN.', { motivo: 'sessao' })
+    return executarComando(ctx, episodioId, versao(d), () => ({ tipo: 'lente.cp2', valores }), {
+      antesDeDecidir: async tx => ((await sessaoTocouConferencia1(tx, ctx.membro.id, episodioId)) ? { atorViuConferencia1: true } : {}),
+    })
   },
 
   async 'lente.time_out'(ctx, d) {
@@ -811,7 +858,7 @@ export const acoesEquipe: Impl = {
     return ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
       const ids = await idsEpisodios(tx, { data })
-      const estados = await estadosCompletos(tx, ids)
+      const estados = await estadosDoAtor(tx, ctx, ids)
       const lista = estados.map(e => resumoDia(e.estado, agoraIso(ctx)))
       await registrarAcessoLista(tx, ctx, 'dia', { data, quantidade: lista.length })
       return lista
@@ -840,7 +887,7 @@ export const acoesEquipe: Impl = {
     return ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
       const ids = await idsEpisodios(tx, { termoNormalizado: termo ? normalizarNome(termo) : null, estado, de, ate, limite: 100 })
-      const estados = await estadosCompletos(tx, ids)
+      const estados = await estadosDoAtor(tx, ctx, ids)
       const lista = estados.map(e => resumoDia(e.estado, agoraIso(ctx)))
       await registrarAcessoLista(tx, ctx, 'dia', { quantidade: lista.length, resultado: 'busca' })
       return lista
@@ -853,7 +900,7 @@ export const acoesEquipe: Impl = {
     return ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
       const ids = await idsEpisodios(tx, data ? { data } : { abertos: true, limite: 500 })
-      const estados = await estadosCompletos(tx, ids)
+      const estados = await estadosDoAtor(tx, ctx, ids)
       const out: AcoesEquipe['pendencias.listar']['S'] = []
       for (const { entrada, estado } of estados) {
         for (const p of pendenciasDoEpisodio(estado, agoraIso(ctx))) {
@@ -871,7 +918,7 @@ export const acoesEquipe: Impl = {
     return ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
       const ids = await idsEpisodios(tx, { data })
-      const estados = await estadosCompletos(tx, ids)
+      const estados = await estadosDoAtor(tx, ctx, ids)
       const r = resumoVespera(
         estados.map(e => e.estado),
         data,
@@ -917,7 +964,7 @@ export const acoesEquipe: Impl = {
     return ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
       const ids = await idsEpisodios(tx, { abertos: true, limite: 500 })
-      const estados = await estadosCompletos(tx, ids)
+      const estados = await estadosDoAtor(tx, ctx, ids)
       const out: AcoesEquipe['alertas.abertos']['S'] = []
       for (const { entrada, estado } of estados) {
         for (const a of alertasDoEpisodio(estado)) {

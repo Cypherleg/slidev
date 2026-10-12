@@ -6,7 +6,7 @@ import { CP1, SO } from '../../supabase/functions/_shared/dominio/modelos/ids.ts
 import { ATOR_SISTEMA_ID, processarFila, restaurarToken } from '../../supabase/functions/_shared/api/index.ts'
 import type { AcaoEquipe } from '../../supabase/functions/_shared/api/contrato.ts'
 import { dataLocal, lenteFicticia, roteiro } from '../../dev/roteiro.ts'
-import { bancoPronto, cpfTeste, criarAmbiente, despejoBanco, dominioPronto, ORIGEM, roteiroTeste, U, type Ambiente } from './apoio.ts'
+import { bancoPronto, cpfTeste, criarAmbiente, despejoBanco, dominioPronto, ORIGEM, PIN, roteiroTeste, U, type Ambiente } from './apoio.ts'
 
 const HOJE = dataLocal(0)
 const AMANHA = dataLocal(1)
@@ -186,7 +186,7 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
     const id = await r.abrir(pid, 'OD', AMANHA)
     await r.d7(id, { dataCirurgia: AMANHA, dioptria: 22.5 })
     // U.dupla (concierge e conferente) registra a chegada e conclui o checkpoint 1.
-    const rDupla = roteiro((quem, acao, dados, ator) => amb.ok(quem as never, acao, dados, { ator }), { ...U, concierge: U.dupla }, (s, a) => amb.pin(s as never, a as never))
+    const rDupla = roteiro((quem, acao, dados, ator) => amb.ok(quem as never, acao, dados, { ator }), { ...U, concierge: U.dupla }, PIN)
     await rDupla.cp1(id)
     const v = await r.obter(id, U.dupla)
     const tenta = await amb.chamar(U.dupla, 'lente.cp2', { episodioId: id, versao: v.episodio.versao, valores: lenteFicticia('OD', 22.5) })

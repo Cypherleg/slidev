@@ -21,6 +21,7 @@ const CAMPOS_PERMITIDOS = new Set([
   'falhas',
   'desconhecidas',
   'canceladas',
+  'expiradas',
   'variaveis',
   'porta',
   'banco',

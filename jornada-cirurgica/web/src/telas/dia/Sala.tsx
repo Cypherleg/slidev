@@ -185,26 +185,30 @@ function LeituraLenteTimeOut(props: PropsPainel) {
   )
 }
 
-/** Sign In e Time Out: leitura em voz alta (regra 10). Registra quem leu e quem confirmou (PIN do confirmador). */
+/**
+ * Sign In e Time Out: leitura em voz alta (regra 10). Registra quem leu e quem confirmou.
+ * Quem leu é quem está marcando (login ou troca por PIN): o servidor só aceita leitor = ator.
+ * Quem confirmou entra com o PIN em `ator.confirmacao` (token só para esta confirmação).
+ */
 function LeituraEmVozAlta(props: PropsPainel & { modelo: ModeloId }) {
   const { visao, ctl, papeis, modelo } = props
   const m = visao.modelos[modelo]
   const b = visao.blocos[modelo]
-  const [membros, setMembros] = useState<{ id: string; nome: string; papeis: Papel[] }[]>([])
-  const [leitorId, setLeitorId] = useState('')
+  const sessao = useSessao()
+  const leitor = sessao.quem
+  const leitorId = leitor?.id ?? ''
   const [confirmador, setConfirmador] = useState<ResultadoPin | null>(null)
   const [pedindoPin, setPedindoPin] = useState(false)
+  // Trocou quem marca: a confirmação anterior não vale para o novo leitor.
   useEffect(() => {
-    chamar('membros.ativos', {})
-      .then(l => setMembros([...l].sort((a, c) => a.nome.localeCompare(c.nome, 'pt-BR'))))
-      .catch(() => setMembros([]))
-  }, [])
+    if (confirmador && confirmador.ator.id === leitorId) setConfirmador(null)
+  }, [leitorId, confirmador])
   const perm = permissaoConcluir(visao, papeis, m)
   const motivos: string[] = []
   if (!perm.permitido) motivos.push(perm.motivo ?? 'Sem permissão para concluir.')
   if (b.faltam.length && !b.impedimentos.some(i => /sem resposta/i.test(i))) motivos.push(`Faltam ${b.faltam.length} ${b.faltam.length === 1 ? 'item' : 'itens'} do checklist.`)
   for (const i of b.impedimentos) if (!motivos.includes(i)) motivos.push(i)
-  if (!leitorId) motivos.push('Escolha quem leu em voz alta.')
+  if (!leitorId) motivos.push('Entre com o usuário de quem leu em voz alta.')
   if (!confirmador) motivos.push('Quem confirmou entra com o PIN.')
   const encerrado = motivoEncerrado(visao)
   if (encerrado) motivos.push(encerrado)
@@ -218,23 +222,16 @@ function LeituraEmVozAlta(props: PropsPainel & { modelo: ModeloId }) {
       <p className="instrucao" style={{ margin: 0 }}>
         Leia em voz alta DA CAIXA DA LENTE, DA BIOMETRIA ORIGINAL E DA PULSEIRA, não da tela. O paciente diz nome completo, data de nascimento e olho.
       </p>
-      <Campo rotulo="Quem leu em voz alta" id={`leitor-${modelo}`}>
-        <select
-          id={`leitor-${modelo}`}
-          value={leitorId}
-          onChange={e => {
-            setLeitorId(e.target.value)
-            if (confirmador && confirmador.ator.id === e.target.value) setConfirmador(null)
-          }}
-        >
-          <option value="">Escolha…</option>
-          {membros.map(x => (
-            <option key={x.id} value={x.id}>
-              {x.nome} ({rotuloPapeis(x.papeis)})
-            </option>
-          ))}
-        </select>
-      </Campo>
+      <div className="pilha" id={`leitor-${modelo}`}>
+        <span className="escolha-rotulo">Quem leu em voz alta</span>
+        <p style={{ margin: 0 }}>
+          <strong>{leitor?.nome ?? '—'}</strong>
+          {leitor && <span className="suave"> ({rotuloPapeis(leitor.papeis)})</span>}
+        </p>
+        <p className="suave" style={{ margin: 0 }}>
+          Quem leu é quem está marcando agora. Se outra pessoa leu, troque o usuário pelo PIN antes de concluir.
+        </p>
+      </div>
       <div className="pilha">
         <span className="escolha-rotulo">Quem confirmou (outra pessoa, com PIN)</span>
         {confirmador && !confirmadorExpirado ? (
@@ -250,6 +247,7 @@ function LeituraEmVozAlta(props: PropsPainel & { modelo: ModeloId }) {
               modo="confirmador"
               titulo="Quem confirmou a leitura?"
               excluirIds={leitorId ? [leitorId] : []}
+              confirmacao={{ episodioId: visao.episodio.id, modelo }}
               aoConcluir={r => {
                 setConfirmador(r)
                 setPedindoPin(false)
@@ -259,7 +257,7 @@ function LeituraEmVozAlta(props: PropsPainel & { modelo: ModeloId }) {
           </div>
         ) : (
           <div>
-            <Botao tipo="secundario" onClick={() => setPedindoPin(true)} desabilitado={!leitorId} motivo={!leitorId ? 'Escolha antes quem leu.' : null}>
+            <Botao tipo="secundario" onClick={() => setPedindoPin(true)} desabilitado={!leitorId} motivo={!leitorId ? 'Entre antes com o usuário de quem leu.' : null}>
               Confirmador: entrar com PIN
             </Botao>
             {confirmadorExpirado && <span className="motivo-bloqueio"> O PIN do confirmador expirou; confirme de novo.</span>}

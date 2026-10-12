@@ -1,7 +1,10 @@
 // Ids estáveis dos itens que o motor de regras consulta. Os modelos v1 usam estas constantes;
 // a interface pode usá-las para tratar itens especiais (ver docs/notas-agentes/dominio.md).
 
+/** Versão anterior (antes da revisão de fidelidade ao POP). Episódios dessa versão: só dados fictícios. */
 export const VERSAO_MODELOS_V1 = 'pop-0.4/1'
+/** Versão atual dos modelos (revisão de fidelidade ao POP, 12/10/2026). */
+export const VERSAO_MODELOS = 'pop-0.4/2'
 
 export const D7 = {
   nomeCompleto: 'A.nome_completo',
@@ -12,6 +15,8 @@ export const D7 = {
   olhoPaciente: 'A.olho_paciente',
   cirurgiaLio: 'A.cirurgia_lio',
   primeiroSegundo: 'A.primeiro_segundo',
+  dataPrimeiroOlho: 'A.data_primeiro_olho',
+  olhoAcompanhante: 'A.olho_acompanhante',
   dataPrevista: 'A.data_prevista',
 
   alfaBloqueador: 'B.alfa_bloqueador',
@@ -46,6 +51,8 @@ export const D7 = {
   refrativa: 'C.cirurgia_refrativa',
   trauma: 'C.trauma_ocular',
   olhoUnico: 'C.olho_unico',
+  olhoUnicoQual: 'C.olho_unico_qual',
+  baixaVisaoContralateral: 'C.baixa_visao_contralateral',
   olhoVermelho: 'C.olho_vermelho',
   cirurgiaOcularPrevia: 'C.cirurgia_ocular_previa',
 
@@ -64,6 +71,7 @@ export const D7 = {
   quemInstilaPessoa: 'E.quem_instila_pessoa',
   quemInstilaOrientacao: 'E.quem_instila_orientacao',
   acompanhanteTitular: 'E.acompanhante_titular',
+  acompanhanteReservaSituacao: 'E.acompanhante_reserva_situacao',
   acompanhanteReserva: 'E.acompanhante_reserva',
   emergencia: 'E.contato_emergencia',
   cidadeTransporte: 'E.cidade_transporte',
@@ -125,6 +133,8 @@ export const D2 = {
   colirios: 'D2.colirios',
   olhoVermelho: 'D2.olho_vermelho',
   mudancaMedicacao: 'D2.mudanca_medicacao',
+  mudancaClasses: 'D2.mudanca_classes',
+  olhoUnicoConversa: 'D2.olho_unico_conversa',
   tcle: 'D2.tcle',
   quemLigou: 'D2.quem_ligou',
   observacoes: 'D2.observacoes',
@@ -139,15 +149,27 @@ export const ADM = {
   pulseirasOutras: 'A.pulseiras_outras',
   etiquetaPeito: 'A.etiqueta_peito',
   mudouRemedio: 'A.mudou_remedio',
-  alergiasDots: 'A.alergias_dots',
+  mudouClasses: 'A.mudou_classes',
+  usaGlp1: 'A.usa_glp1',
+  glp1UltimaDose: 'A.glp1_ultima_dose',
+  alergias: 'A.alergias_reconfirmadas',
+  /** Mantido por compatibilidade: hoje aponta para "alergias reconfirmadas". */
+  alergiasDots: 'A.alergias_reconfirmadas',
+  alergiaNova: 'A.alergia_nova',
+  dotsColados: 'A.dots_colados',
   olhoVermelho: 'A.olho_vermelho',
   coliriosPre: 'A.colirios_pre',
   jejum: 'A.jejum_medicacoes',
   pa: 'A.pa',
   glicemia: 'A.glicemia_capilar',
-  tcle: 'A.tcle',
+  /** "TCLE assinado no prontuário" (HS5). Antes da versão pop-0.4/2 era o item único 'A.tcle'. */
+  tcle: 'A.tcle_assinado',
+  tcleOlho: 'A.tcle_olho',
   nomeMae: 'A.nome_mae',
 } as const
+
+/** Ids de versões anteriores ainda reconhecidos pelas regras. */
+export const ADM_LEGADO = { tcle: 'A.tcle' } as const
 
 export const SI = {
   identificacao: 'B.identificacao_ativa',
@@ -178,6 +200,7 @@ export const TO = {
   paciente: 'C.paciente_confirma',
   marca: 'C.marca_visivel',
   procedimento: 'C.procedimento',
+  olhoUnicoPreceptor: 'C.olho_unico_preceptor',
   mesaSoLio: 'CP3.mesa_so_lio_do_paciente',
   readBack: 'C.read_back',
   verbalizados: 'C.alergias_alfa_anticoag_verbalizados',
@@ -216,6 +239,8 @@ export const ALTA = {
   quemInstila: 'ALTA.quem_instila',
   primeiraInstilacao: 'ALTA.primeira_instilacao',
   acessoPulseira: 'ALTA.acesso_pulseira_retirados',
+  olhoUnicoApoio: 'ALTA.olho_unico_apoio_domiciliar',
+  olhoUnicoLigacao: 'ALTA.olho_unico_ligacao_noite',
   d1Data: 'RET.d1_data',
   d1Hora: 'RET.d1_hora',
   d15Data: 'RET.d15_data',
@@ -229,3 +254,27 @@ export const ALTA = {
   docTelefones: 'DOC.telefones',
   docAtestado: 'DOC.atestado',
 } as const
+
+/** Classes da lista crítica de medicamentos (POP §1.B), na ordem do POP. */
+export const CLASSES_MEDICAMENTO = [
+  { classe: 'alfa_bloqueador', itemD7: D7.alfaBloqueador, rotulo: 'α1-bloqueador' },
+  { classe: 'anticoagulante', itemD7: D7.anticoagulante, rotulo: 'Anticoagulante' },
+  { classe: 'antiagregante', itemD7: D7.antiagregante, rotulo: 'Antiagregante' },
+  { classe: 'insulina_antidiabeticos', itemD7: D7.insulina, rotulo: 'Insulina e antidiabéticos' },
+  { classe: 'glp1', itemD7: D7.glp1, rotulo: 'Análogo de GLP-1 ou tirzepatida' },
+  { classe: 'anti_hipertensivos', itemD7: D7.antiHipertensivos, rotulo: 'Anti-hipertensivos' },
+  { classe: 'corticoide_imunossupressor', itemD7: D7.corticoide, rotulo: 'Corticoide sistêmico ou imunossupressor' },
+  { classe: 'antipsicoticos', itemD7: D7.antipsicoticos, rotulo: 'Antipsicóticos e psicotrópicos' },
+  { classe: 'colirios', itemD7: D7.colirios, rotulo: 'Colírios em uso' },
+  { classe: 'fitoterapicos', itemD7: D7.fitoterapicos, rotulo: 'Fitoterápicos e suplementos' },
+] as const
+
+export type ClasseMedicamento = (typeof CLASSES_MEDICAMENTO)[number]['classe']
+
+/** Item de medicamento da classe registrado no D-2 (mudança de medicação). */
+export const medicamentoD2 = (classe: ClasseMedicamento): string => `D2.med.${classe}`
+/** Item de medicamento da classe registrado na admissão (mudou remédio nos últimos 7 dias). */
+export const medicamentoAdmissao = (classe: ClasseMedicamento): string => `A.med.${classe}`
+
+/** Referência entre modelos para `exigidoQuando`: itens que só valem com OLHO ÚNICO (POP §11). */
+export const CONDICAO_OLHO_UNICO = { itemId: `d7:${D7.olhoUnicoQual}`, valores: ['olho_unico'] }

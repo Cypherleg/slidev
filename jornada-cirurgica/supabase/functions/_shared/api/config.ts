@@ -56,6 +56,10 @@ export interface ConfigApi {
   limiteCorpoAnexoBytes: number
   /** Iterações do PBKDF2 do PIN (padrão alto; testes podem reduzir). */
   iteracoesPin: number
+  /** Validade da mensagem pendente na fila (minutos) — depois disso, ou noutra data local, é cancelada [S]. */
+  filaValidadeMin: number
+  /** Validade do token de confirmação da leitura em voz alta (minutos; uso único). */
+  confirmacaoTtlMin: number
   /** Limite de falhas de PIN por membro-alvo e por sessão em `janelaPinMin`. */
   falhasPinPorAlvo: number
   falhasPinPorSessao: number
@@ -182,6 +186,9 @@ export function lerConfig(env: Leitor, opcoes: { exigirSegredos?: boolean } = {}
     }
   }
 
+  const filaValidadeMin = inteiro(env('JORNADA_FILA_VALIDADE_MIN'), 60, 1, 24 * 60)
+  if (Number.isNaN(filaValidadeMin)) problemas.push('JORNADA_FILA_VALIDADE_MIN')
+
   const iteracoesPin = inteiro(env('JORNADA_PIN_ITERACOES'), 310000, 1000, 5000000)
   if (Number.isNaN(iteracoesPin)) problemas.push('JORNADA_PIN_ITERACOES')
   if (!modoDev && iteracoesPin < 100000) problemas.push('JORNADA_PIN_ITERACOES')
@@ -209,6 +216,8 @@ export function lerConfig(env: Leitor, opcoes: { exigirSegredos?: boolean } = {}
     limiteCorpoBytes: 256 * 1024,
     limiteCorpoAnexoBytes: 7_200_000,
     iteracoesPin,
+    filaValidadeMin,
+    confirmacaoTtlMin: 5,
     falhasPinPorAlvo: 5,
     falhasPinPorSessao: 10,
     janelaPinMin: 15,

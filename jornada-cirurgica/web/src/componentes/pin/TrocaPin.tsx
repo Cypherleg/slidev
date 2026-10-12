@@ -1,9 +1,10 @@
 // Troca rápida de usuário por PIN em aparelho compartilhado (briefing §5; decisão A8).
 // Modo 'ator': a marcação passa a sair em nome de quem digitou o PIN (definirAtor).
 // Modo 'confirmador': só obtém o token de quem confirmou a leitura em voz alta (Sign In, Time Out),
-// sem trocar o usuário que está marcando.
+// sem trocar o usuário que está marcando. Usa `ator.confirmacao` (token próprio, preso ao episódio e ao
+// bloco, curto e de uso único; não serve para marcar em nome de ninguém).
 import { useEffect, useMemo, useState } from 'react'
-import type { Papel } from '@dominio/tipos.ts'
+import type { ModeloId, Papel } from '@dominio/tipos.ts'
 import { definirAtor } from '../../api/ator.ts'
 import { chamar, ErroChamada } from '../../api/cliente.ts'
 import { Aviso, Botao, Carregando } from '../base/index.tsx'
@@ -37,6 +38,8 @@ export function TrocaPin(props: {
   /** Mostrar só quem tem algum destes papéis. */
   papeis?: Papel[]
   excluirIds?: string[]
+  /** Modo 'confirmador': episódio e bloco da leitura em voz alta que o PIN confirma. */
+  confirmacao?: { episodioId: string; modelo: ModeloId }
   aoConcluir: (r: ResultadoPin) => void
   aoCancelar?: () => void
 }) {
@@ -78,7 +81,10 @@ export function TrocaPin(props: {
     setVerificando(true)
     setErro(null)
     try {
-      const r = await chamar('ator.pin', { membroId: selecionado.id, pin })
+      const r =
+        props.modo === 'confirmador' && props.confirmacao
+          ? await chamar('ator.confirmacao', { membroId: selecionado.id, pin, episodioId: props.confirmacao.episodioId, modelo: props.confirmacao.modelo })
+          : await chamar('ator.pin', { membroId: selecionado.id, pin })
       setPin('')
       if (props.modo === 'ator') definirAtor({ token: r.token, expiraEm: r.expiraEm, id: r.ator.id, nome: r.ator.nome, papeis: r.ator.papeis })
       props.aoConcluir(r)

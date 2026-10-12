@@ -226,3 +226,43 @@ export function nomeMae(est: EstadoInterno): string | null {
   const v = valor(est, 'd7', 'A.nome_mae')
   return typeof v === 'string' && v.trim() ? v.trim() : null
 }
+
+// ---------------------------------------------------------------------------
+// Condições de itens (exigidoQuando por item; referência entre modelos 'modelo:ITEM.id')
+// ---------------------------------------------------------------------------
+
+/** Separa 'modelo:ITEM.id' (outro modelo) de 'ITEM.id' (mesmo modelo). */
+export function referenciaItem(modeloAtual: ModeloId, ref: string): { modelo: ModeloId; itemId: string } {
+  const i = ref.indexOf(':')
+  if (i > 0) {
+    const m = ref.slice(0, i) as ModeloId
+    if (m in RANK_MODELOS) return { modelo: m, itemId: ref.slice(i + 1) }
+  }
+  return { modelo: modeloAtual, itemId: ref }
+}
+
+const RANK_MODELOS: Record<ModeloId, true> = {
+  d7: true, cp1: true, cp2: true, d2: true, admissao: true, sign_in: true, anestesia: true, time_out: true, sign_out: true, alta: true,
+}
+
+/** Condição por item: o valor (aplicável) do item referido está entre os valores; 'multipla': basta um em comum. */
+export function condicaoItemVale(est: EstadoInterno, modeloAtual: ModeloId, cond: { itemId: string; valores: string[] }, profundidade = 0): boolean {
+  const ref = referenciaItem(modeloAtual, cond.itemId)
+  const v = valorAplicavel(est, ref.modelo, ref.itemId, profundidade + 1)
+  if (typeof v === 'string') return cond.valores.includes(v)
+  if (Array.isArray(v)) return v.some((x) => cond.valores.includes(x))
+  return false
+}
+
+/**
+ * Valor de um item só quando ele se aplica: item condicional (exigidoQuando por item) cuja condição não vale
+ * não conta (ex.: "qual braço" respondido mas doença renal = não). Condições por contexto não são avaliadas aqui.
+ */
+export function valorAplicavel(est: EstadoInterno, modeloId: ModeloId, itemId: string, profundidade = 0): ValorResposta | undefined {
+  const v = valor(est, modeloId, itemId)
+  if (v === undefined || profundidade > 4) return v
+  const item = itemDoModelo(est, modeloId, itemId)
+  const cond = item?.exigidoQuando
+  if (cond && 'itemId' in cond && !condicaoItemVale(est, modeloId, cond, profundidade)) return undefined
+  return v
+}

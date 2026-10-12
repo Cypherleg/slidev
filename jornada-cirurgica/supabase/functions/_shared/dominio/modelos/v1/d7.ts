@@ -3,7 +3,7 @@
 // orienta suspender medicamento. Nenhum campo fica em branco: 'não' e 'nenhuma conhecida' são respostas escritas."
 
 import type { ModeloChecklist, Papel } from '../../tipos.ts'
-import { D7, VERSAO_MODELOS_V1 } from '../ids.ts'
+import { D7, VERSAO_MODELOS } from '../ids.ts'
 import { item } from './comum.ts'
 
 const C: Papel[] = ['concierge']
@@ -12,7 +12,7 @@ const NUNCA_SUSPENDER = 'Regra do serviço (informação): a concierge nunca ori
 export function modeloD7(): ModeloChecklist {
   return {
     id: 'd7',
-    versao: VERSAO_MODELOS_V1,
+    versao: VERSAO_MODELOS,
     titulo: 'D-7 — Checklist da concierge (dia dos exames)',
     descricao:
       'A concierge coleta e sinaliza. Todo item ALERTA chega ao cirurgião no mesmo dia. Nenhum campo fica em branco: "não" e "nenhuma conhecida" são respostas escritas.',
@@ -37,12 +37,25 @@ export function modeloD7(): ModeloChecklist {
               'Pergunta aberta; nunca "é o olho direito?". O olho do pedido vem do episódio. "Pedido e paciente coincidem?" é calculado pelo painel: diferente ou "não sabe" gera ALERTA.',
             alerta: { descricao: 'Pedido e paciente não coincidem (ou paciente não sabe) → ALERTA', nivel: 'alerta' },
           }),
+          item(D7.olhoAcompanhante, 'Déficit cognitivo: olho confirmado com o acompanhante ou representante', 'olho', C, 'POP §11 (demência ou capacidade reduzida)', {
+            obrigatorio: false,
+            permiteNaoSabe: true,
+            exigidoQuando: { itemId: D7.demencia, valores: ['sim'] },
+            ajuda: 'O paciente não é fonte confiável: o olho é confirmado com o acompanhante no D-7 e de novo no D0 (POP §11). Diferente do pedido ou "não sabe" gera ALERTA.',
+            alerta: { descricao: 'Olho dito pelo acompanhante diferente do pedido (ou não sabe) → ALERTA', nivel: 'alerta' },
+          }),
           item(D7.cirurgiaLio, 'Cirurgia proposta e tipo de LIO (monofocal, tórica, outra) conferidos', 'confirmacao', C, 'POP §1.A'),
-          item(D7.primeiroSegundo, 'Primeiro ou segundo olho', 'opcao', C, 'POP §1.A', {
+          item(D7.primeiroSegundo, 'Primeiro ou segundo olho', 'opcao', C, 'POP §1.A e §11', {
+            alerta: { descricao: 'Resposta diferente do registro do painel (episódio do outro olho) → ALERTA', nivel: 'alerta' },
             opcoes: [
               { valor: 'primeiro', rotulo: 'Primeiro olho' },
               { valor: 'segundo', rotulo: 'Segundo olho' },
             ],
+          }),
+          item(D7.dataPrimeiroOlho, 'Segundo olho: data da cirurgia do 1º olho', 'data', C, 'POP §11 (segundo olho)', {
+            obrigatorio: false,
+            exigidoQuando: { itemId: D7.primeiroSegundo, valores: ['segundo'] },
+            ajuda: 'Gera o alerta por extenso "2º OLHO — 1º operado em dd/mm/aaaa". Nada da lente do 1º olho é copiado. Divergência com o registro do painel gera ALERTA.',
           }),
           item(D7.dataPrevista, 'Data prevista conferida com o paciente', 'confirmacao', C, 'POP §1.A'),
         ],
@@ -145,7 +158,19 @@ export function modeloD7(): ModeloChecklist {
           }),
           item(D7.trauma, 'Trauma ocular prévio', 'sim_nao', C, 'POP §1.C'),
           item(D7.olhoUnico, 'Olho único ou ambliopia', 'sim_nao', C, 'POP §1.C e §11', {
-            alerta: { descricao: 'Sim → ALERTA. Alerta por extenso: "OLHO ÚNICO".', nivel: 'alerta' },
+            alerta: { descricao: 'Sim → ALERTA. Olho único: alerta por extenso "OLHO ÚNICO" e dot Q.', nivel: 'alerta' },
+          }),
+          item(D7.olhoUnicoQual, 'Olho único ou ambliopia: qual', 'opcao', C, 'POP §1.C, §2 e §11', {
+            obrigatorio: false,
+            exigidoQuando: { itemId: D7.olhoUnico, valores: ['sim'] },
+            opcoes: [
+              { valor: 'olho_unico', rotulo: 'Olho único' },
+              { valor: 'ambliopia', rotulo: 'Ambliopia' },
+            ],
+            ajuda: 'Olho único: "OLHO ÚNICO" por extenso, dot Q e regras do POP §11.',
+          }),
+          item(D7.baixaVisaoContralateral, 'Baixa visão no olho contralateral (não operado)', 'sim_nao', C, 'POP §2 (dot Q: gatilho no prontuário)', {
+            ajuda: 'Gatilho do dot Q (risco de queda).',
           }),
           item(D7.olhoVermelho, 'Olho vermelho, secreção, terçol hoje', 'sim_nao', C, 'POP §1.C', {
             alerta: { descricao: 'Sim → ALERTA', nivel: 'alerta' },
@@ -206,10 +231,18 @@ export function modeloD7(): ModeloChecklist {
             camposPessoa: ['nome', 'parentesco', 'telefone'],
             ajuda: 'Também é cadastrado nos contatos do episódio (acompanhante titular).',
           }),
+          item(D7.acompanhanteReservaSituacao, 'Acompanhante reserva', 'opcao', C, 'POP §8 (prevenção) e §13 (procedimento 1)', {
+            opcoes: [
+              { valor: 'registrado', rotulo: 'Reserva registrado (nome e telefone abaixo)' },
+              { valor: 'nenhum', rotulo: 'Nenhum disponível (explicar na observação)' },
+            ],
+            ajuda: 'POP §8: acompanhante titular e reserva registrados no D-7, com telefone.',
+          }),
           item(D7.acompanhanteReserva, 'Acompanhante reserva: nome, telefone', 'pessoa', C, 'POP §8 (prevenção)', {
             obrigatorio: false,
+            exigidoQuando: { itemId: D7.acompanhanteReservaSituacao, valores: ['registrado'] },
             camposPessoa: ['nome', 'telefone'],
-            ajuda: 'POP §8: acompanhante titular e reserva registrados no D-7, com telefone. Também é cadastrado nos contatos.',
+            ajuda: 'Também é cadastrado nos contatos (acompanhante reserva).',
           }),
           item(D7.emergencia, 'Contato de emergência (de preferência outra pessoa)', 'pessoa', C, 'POP §1.E', {
             camposPessoa: ['nome', 'telefone'],

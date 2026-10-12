@@ -2,7 +2,7 @@
 // lente.cp2 (lente_registros, visibilidade restrita). Aqui ficam só as marcações de cada checkpoint.
 
 import type { ModeloChecklist, Papel } from '../../tipos.ts'
-import { CP1, CP2, VERSAO_MODELOS_V1 } from '../ids.ts'
+import { CP1, CP2, VERSAO_MODELOS } from '../ids.ts'
 import { FONTE_HOMONIMO, item, NOME_MAE_CONFERENCIA } from './comum.ts'
 
 const A: Papel[] = ['concierge']
@@ -15,7 +15,7 @@ const AJUDA_DIVERGENCIA = '"Não" = divergência: a LIO e a ficha vão para quar
 export function modeloCp1(): ModeloChecklist {
   return {
     id: 'cp1',
-    versao: VERSAO_MODELOS_V1,
+    versao: VERSAO_MODELOS,
     titulo: 'Checkpoint 1 — chegada da LIO',
     descricao:
       'Funcionária A (substituta definida). Toda conferência parte da impressão original da biometria (ARGOS) com o plano de LIO assinado pelo cirurgião; ficha transcrita não é fonte.',
@@ -65,7 +65,7 @@ export function modeloCp1(): ModeloChecklist {
 export function modeloCp2(): ModeloChecklist {
   return {
     id: 'cp2',
-    versao: VERSAO_MODELOS_V1,
+    versao: VERSAO_MODELOS,
     titulo: 'Checkpoint 2 — D-2, checagem independente',
     descricao:
       'Funcionária B (substituta definida). Independente significa: B não vê as marcações de A, começa pela biometria original e lê em voz alta. Olho, modelo, dioptria, cilindro e eixo são digitados de novo (conferência cega) e comparados pelo painel.',
@@ -96,7 +96,7 @@ export function modeloCp2(): ModeloChecklist {
           item(CP2.reserva, 'LIO reserva presente', 'sim_nao', B, 'POP §3 (checkpoint 2)', { exigeSim: true }),
           item(CP2.plausibilidade, 'Sinais de plausibilidade definidos pelo cirurgião (B não interpreta; só sinaliza)', 'texto', B, 'POP §3 (checkpoint 2) [RASCUNHO]', {
             obrigatorio: false,
-            ajuda: 'Exemplo usual do POP: diferença interocular de comprimento axial > 0,3 mm ou de K médio > 1 D pede reconfirmação.',
+            ajuda: 'Critérios a definir pelo cirurgião [RASCUNHO]. B não interpreta; só sinaliza.',
             pendente: 'Critérios de plausibilidade a definir pelo cirurgião (POP §3, [RASCUNHO]). Sem regra no painel: o texto é só registro.',
           }),
           item(CP2.nomeMae, NOME_MAE_CONFERENCIA, 'confirmacao', B, FONTE_HOMONIMO, { obrigatorio: false, exigidoQuando: { contexto: 'homonimo_no_dia' } }),

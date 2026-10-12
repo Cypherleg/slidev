@@ -72,7 +72,9 @@ describe.skipIf(!bancoPronto || !dominioPronto)('CPF e Datasigh (banco real)', (
       conferidoDatasigh: false,
       documentoConferido: true,
     })
-    expect(dup.corpo).toMatchObject({ ok: false, erro: { codigo: 'validacao', detalhes: { pacienteId } } })
+    // Sem o id do cadastro existente (a busca por CPF é o caminho, com limite e registro).
+    expect(dup.corpo).toMatchObject({ ok: false, erro: { codigo: 'validacao', detalhes: { motivo: 'ja_cadastrado' } } })
+    expect(JSON.stringify(dup.corpo)).not.toContain(pacienteId)
     // Mesmo nome e nascimento, sem CPF nem id do Datasigh: não é unido a ninguém.
     const homonimo = await amb.ok(U.concierge, 'paciente.cadastrar', {
       cpf: null,

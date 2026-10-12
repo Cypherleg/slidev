@@ -29,6 +29,7 @@ import {
   type Db,
   type FetchLike,
 } from '../../supabase/functions/_shared/api/index.ts'
+import postgres from 'postgres'
 import { arquivosMigration, criarBancoTeste, type BancoTeste } from '../apoio/banco.ts'
 import { roteiro, type Chamar } from '../../dev/roteiro.ts'
 
@@ -198,7 +199,14 @@ export interface Ambiente {
 export const APARELHO = 'aparelho-teste-0001'
 
 export async function criarAmbiente(
-  opcoes: { env?: Record<string, string>; datasigh?: ReturnType<typeof datasighFalso>; semModelos?: boolean; configExtra?: Partial<ConfigApi> } = {},
+  opcoes: {
+    env?: Record<string, string>
+    datasigh?: ReturnType<typeof datasighFalso>
+    semModelos?: boolean
+    configExtra?: Partial<ConfigApi>
+    /** Pool próprio com mais conexões (testes de concorrência; cada Edge Function tem a sua conexão). */
+    poolMax?: number
+  } = {},
 ): Promise<Ambiente> {
   const banco = await criarBancoTeste()
   const env = envTeste(opcoes.env)
@@ -206,7 +214,8 @@ export async function criarAmbiente(
   const logger = loggerCapturado()
   const armazenamento = criarArmazenamentoLocal({ segredo: SEGREDO_DEV })
   const datasigh = opcoes.datasigh ?? datasighFalso({})
-  const db = adaptadorPostgres(banco.sql)
+  const pool = opcoes.poolMax ? postgres(banco.url, { max: opcoes.poolMax, prepare: false, onnotice: () => {} }) : null
+  const db = adaptadorPostgres(pool ?? banco.sql)
   const handler = criarHandler({
     config,
     db,
@@ -257,7 +266,10 @@ export async function criarAmbiente(
       const r = await amb.ok(sessao, 'ator.pin', { membroId: alvo.id, pin: PIN }, { aparelho })
       return r.token
     },
-    encerrar: () => banco.encerrar(),
+    encerrar: async () => {
+      if (pool) await pool.end({ timeout: 5 })
+      await banco.encerrar()
+    },
   }
   return amb
 }
@@ -298,5 +310,5 @@ export async function despejoBanco(banco: BancoTeste): Promise<string> {
 /** Roteiro de episódio (dev/roteiro.ts) com a equipe de teste. */
 export function roteiroTeste(amb: Ambiente) {
   const chamar: Chamar = (quem, acao, dados, ator) => amb.ok(quem, acao, dados, { ator })
-  return roteiro(chamar, U, (sessao, alvo) => amb.pin(sessao as UsuarioTeste, alvo as UsuarioTeste))
+  return roteiro(chamar, U, PIN)
 }

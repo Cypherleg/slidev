@@ -83,6 +83,7 @@ export function estadoVazio(entrada: EntradaEstado): EstadoInterno {
     etiquetasCopiadas: [],
     ultimoEventoEm: ep.abertoEm,
     ultimoSeq: 0,
+    contador: 0,
   }
   return est
 }
@@ -124,6 +125,7 @@ function conclusaoDe(ev: Evento): ConclusaoInterna {
 
 export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
   const d = (ev.dados ?? {}) as Record<string, unknown>
+  est.contador++
   switch (ev.tipo) {
     case 'episodio.agendado':
     case 'episodio.corrigido': {
@@ -156,6 +158,7 @@ export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
         motivoForaDeHora: ev.motivoForaDeHora ?? null,
         correcoes: anterior ? anterior.correcoes + 1 : 0,
         eventoId: ev.id,
+        ordem: est.contador,
       }
       break
     }
@@ -179,12 +182,12 @@ export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
     }
     case 'alerta.comunicado': {
       const id = str(d.alertaId)
-      if (id) est.alertasComunicados[id] = { porId: ev.autorId, em: ev.registradoEm, via: (str(d.via) ?? 'outro') as ViaComunicacao, cirurgiaoId: str(d.cirurgiaoId) ?? '', observacao: str(d.observacao) }
+      if (id) est.alertasComunicados[id] = { porId: ev.autorId, em: ev.registradoEm, via: (str(d.via) ?? 'outro') as ViaComunicacao, cirurgiaoId: str(d.cirurgiaoId) ?? '', observacao: str(d.observacao), ordem: est.contador }
       break
     }
     case 'alerta.conduta_registrada': {
       const id = str(d.alertaId)
-      if (id) est.condutas[id] = { texto: str(d.conduta) ?? '', cirurgiaoId: ev.autorId, em: ev.registradoEm }
+      if (id) est.condutas[id] = { texto: str(d.conduta) ?? '', cirurgiaoId: ev.autorId, em: ev.registradoEm, ordem: est.contador }
       break
     }
     case 'contato.salvo': {
@@ -387,11 +390,17 @@ export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
 export function atualizarDerivados(est: EstadoInterno, em: string): void {
   const alertas = avaliarAlertasAtivos(est)
   const ativos = new Set(alertas.map((a) => a.id))
-  for (const id of ativos) {
-    const t = est.trilhaAlertas[id]
-    if (!t || !t.ativo) est.trilhaAlertas[id] = { geradoEm: em, ativo: true }
+  for (const a of alertas) {
+    const assinatura = `${a.nivel}|${a.titulo}|${a.descricao}`
+    const ultimo = { titulo: a.titulo, descricao: a.descricao, nivel: a.nivel, origem: { ...a.origem } }
+    const t = est.trilhaAlertas[a.id]
+    if (!t) est.trilhaAlertas[a.id] = { geradoEm: em, ativo: true, atualizadoEm: em, atualizadoOrdem: est.contador, assinatura, ultimo }
+    else if (!t.ativo || t.assinatura !== assinatura) Object.assign(t, { ativo: true, atualizadoEm: em, atualizadoOrdem: est.contador, assinatura, ultimo })
+    else t.ultimo = ultimo
   }
-  for (const [id, t] of Object.entries(est.trilhaAlertas)) if (t.ativo && !ativos.has(id)) t.ativo = false
+  for (const [id, t] of Object.entries(est.trilhaAlertas)) {
+    if (t.ativo && !ativos.has(id)) Object.assign(t, { ativo: false, atualizadoEm: em, atualizadoOrdem: est.contador })
+  }
   atualizarHardStops(est, em, { alertas })
 }
 

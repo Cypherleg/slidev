@@ -1,15 +1,17 @@
 // Confirmações do D-2 (POP §13 procedimento 5; §8 prevenção; briefing §6.4).
 
 import type { ModeloChecklist, Papel } from '../../tipos.ts'
-import { D2, VERSAO_MODELOS_V1 } from '../ids.ts'
-import { item } from './comum.ts'
+import { D2, VERSAO_MODELOS } from '../ids.ts'
+import { item, itensMudancaMedicacao, PENDENTE_OLHO_UNICO } from './comum.ts'
+import { modeloD7 } from './d7.ts'
+import { CONDICAO_OLHO_UNICO, medicamentoD2 } from '../ids.ts'
 
 const P: Papel[] = ['conferente', 'concierge']
 
 export function modeloD2(): ModeloChecklist {
   return {
     id: 'd2',
-    versao: VERSAO_MODELOS_V1,
+    versao: VERSAO_MODELOS,
     titulo: 'D-2 — Confirmações e TCLE',
     descricao:
       'Ligação de confirmação (no POP, da concierge; o painel registra quem ligou), TCLE assinado do olho certo e observações. Concluir exige D-7 concluído e checkpoint 2 da lente sem divergência.',
@@ -37,8 +39,18 @@ export function modeloD2(): ModeloChecklist {
             hardStop: 'HS7_OLHO_VERMELHO',
             ajuda: '"Sim" abre hard stop: avaliação do cirurgião, registrada por escrito.',
           }),
-          item(D2.mudancaMedicacao, 'Mudança de medicação desde o D-7?', 'sim_nao', P, 'POP §13 (procedimento 5)', {
-            alerta: { descricao: 'Sim → ALERTA ao cirurgião', nivel: 'alerta' },
+          item(D2.mudancaMedicacao, 'Mudança de medicação desde o D-7?', 'sim_nao', P, 'POP §13 (procedimento 5); POP §0 ("em 7 dias a medicação muda")', {
+            alerta: { descricao: 'Sim → ALERTA ao cirurgião ([S]: o POP lista a pergunta na ligação do D-2; tratá-la como ALERTA é interpretação)', nivel: 'alerta' },
+          }),
+          ...itensMudancaMedicacao({
+            idClasses: D2.mudancaClasses,
+            idMudou: D2.mudancaMedicacao,
+            idItem: medicamentoD2,
+            textoClasses: 'Mudança de medicação: quais classes da lista crítica mudaram',
+            papeis: P,
+            fonte: 'POP §13 (procedimento 5) e §0',
+            itensD7: modeloD7().secoes.flatMap((x) => x.itens),
+            incluirEstadoSaude: false,
           }),
           item(D2.quemLigou, 'Quem ligou (nome)', 'texto', P, 'briefing §6.4'),
         ],
@@ -55,6 +67,11 @@ export function modeloD2(): ModeloChecklist {
             ],
             hardStop: 'HS3_DIVERGENCIA_IDENTIDADE_OLHO',
             ajuda: 'Olho divergente abre hard stop de identidade/olho (resolução escrita do cirurgião). Um TCLE por olho e por cirurgia.',
+          }),
+          item(D2.olhoUnicoConversa, 'Olho único: conversa específica no consentimento, com prazo maior de reflexão', 'confirmacao', P, 'POP §11 (olho único)', {
+            obrigatorio: false,
+            exigidoQuando: { ...CONDICAO_OLHO_UNICO },
+            pendente: PENDENTE_OLHO_UNICO,
           }),
         ],
       },

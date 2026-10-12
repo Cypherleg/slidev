@@ -161,7 +161,10 @@ export type RecursoAcesso =
   | 'mensagens'
   | 'materiais_previa'
   | 'ator_encerrado'
-  | 'ator_pin'
+  | 'pin_tentativa'
+  | 'pin_ok'
+  | 'confirmacao_usada'
+  | 'pagina_paciente'
 
 export async function registrarAcesso(
   tx: Executor,

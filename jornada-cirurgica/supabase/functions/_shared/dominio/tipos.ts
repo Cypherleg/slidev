@@ -145,7 +145,10 @@ export interface ItemModelo {
   /** Trecho entre colchetes no POP = decisão pendente. Exibir como pendência, nunca como regra. */
   pendente?: string
   // --- Acréscimos opcionais (agente domínio) ---------------------------------
-  /** Item de conferência (sim/não): o bloco só pode ser concluído com a resposta 'sim'. */
+  /**
+   * Item de conferência: a resposta 'nao' impede a conclusão do bloco (sim_nao: só conclui com 'sim';
+   * opcao: qualquer opção diferente de 'nao', ex.: "confirmado com o acompanhante").
+   */
   exigeSim?: boolean
   /** Obrigatório apenas quando a condição vale (ex.: detalhe "qual braço" quando há fístula). */
   exigidoQuando?: CondicaoItem
@@ -161,7 +164,10 @@ export interface ItemModelo {
 
 /** Condição de obrigatoriedade de um item. */
 export type CondicaoItem =
-  | { itemId: string; valores: string[] } // outro item do mesmo modelo com um destes valores
+  // Outro item com um destes valores (item 'multipla': basta um em comum). Mesmo modelo: 'ITEM.id';
+  // outro modelo: 'modelo:ITEM.id' (ex.: 'd7:C.olho_unico_qual'). O valor de um item condicional só conta
+  // quando a condição dele também vale.
+  | { itemId: string; valores: string[] }
   | { contexto: 'homonimo_no_dia' | 'lente_torica' | 'dot_D' }
 
 export interface SecaoModelo {
@@ -354,6 +360,13 @@ export interface Alerta {
   conduta?: { texto: string; cirurgiaoId: string; cirurgiaoNome: string; em: string }
   /** Alerta deixou de valer porque a resposta que o gerou foi corrigida. */
   inativo?: boolean
+  // --- Acréscimos opcionais (agente domínio) ---------------------------------
+  /** Última mudança do alerta (gerado, conteúdo corrigido, desativado ou reativado). */
+  atualizadoEm?: string
+  /** Precisa de (nova) comunicação ao cirurgião: nunca comunicado ou mudou depois da última comunicação. */
+  comunicacaoPendente?: boolean
+  /** Há conduta, mas escrita antes da última mudança do alerta: não vale mais. */
+  condutaDesatualizada?: boolean
 }
 
 export type ViaComunicacao = 'presencial' | 'telefone' | 'whatsapp' | 'painel' | 'outro'
@@ -618,6 +631,8 @@ export interface EpisodioVisao {
   permissoes: Record<string, { permitido: boolean; motivo?: string }>
   /** Acréscimo opcional (agente domínio): resoluções escritas de hard stops (hardstop.resolver), para o registro impresso. */
   hardStopsResolvidos?: { codigo: CodigoHardStop; titulo: string; resolucao: string; porNome: string; em: string }[]
+  /** Acréscimo opcional: o que verbalizar no Time Out para TODO paciente (POP §2 regra 4, §9.C), mesmo que negativo. */
+  verbalizacaoTimeOut?: { alergias: string[]; alfaBloqueador: string; anticoagulacao: string }
 }
 
 /** Linha da lista do dia (sem valores de lente). */

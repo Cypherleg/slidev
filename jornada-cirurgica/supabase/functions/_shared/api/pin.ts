@@ -71,7 +71,7 @@ export async function emitirTokenAtor(
 ): Promise<{ token: string; expiraEm: string; jti: string }> {
   const exp = Math.floor(agoraMs / 1000) + ttlMin * 60
   const jti = base64url(aleatorio(12))
-  const token = await assinarToken(segredo, PREFIXO_ATOR, { m: dados.membroId, s: dados.sessaoUsuarioId, d: dados.aparelhoId, exp, j: jti })
+  const token = await assinarToken(segredo, PREFIXO_ATOR, { f: 'ator', m: dados.membroId, s: dados.sessaoUsuarioId, d: dados.aparelhoId, exp, j: jti })
   return { token, expiraEm: new Date(exp * 1000).toISOString(), jti }
 }
 
@@ -86,11 +86,61 @@ export async function verificarTokenAtor(
   agoraMs: number,
 ): Promise<TokenAtor | null> {
   const p = await verificarToken(segredo, PREFIXO_ATOR, token)
-  if (!p) return null
+  if (!p || p.f !== 'ator') return null
   if (typeof p.exp !== 'number' || p.exp * 1000 <= agoraMs) return null
   if (typeof p.m !== 'string' || typeof p.s !== 'string' || typeof p.j !== 'string') return null
   if (p.s !== esperado.sessaoUsuarioId) return null
   const aparelho = typeof p.d === 'string' ? p.d : null
   if (aparelho !== esperado.aparelhoId) return null
   return { membroId: p.m, sessaoUsuarioId: p.s, aparelhoId: aparelho, expiraEm: new Date(p.exp * 1000).toISOString(), jti: p.j }
+}
+
+// ---------------------------------------------------------------------------
+// Token de confirmação da leitura em voz alta (Sign In, Time Out)
+// Finalidade própria (prefixo e campo `f`), preso a episódio, bloco, sessão e aparelho, curto e de
+// uso único (o `jti` é consumido em `acessos` pelo bloco.concluir). Nunca vale como `x-jornada-ator`.
+// ---------------------------------------------------------------------------
+
+const PREFIXO_CONFIRMACAO = 'cf1'
+
+export interface TokenConfirmacao {
+  membroId: string
+  jti: string
+  expiraEm: string
+}
+
+export async function emitirTokenConfirmacao(
+  segredo: string,
+  dados: { membroId: string; sessaoUsuarioId: string; aparelhoId: string | null; episodioId: string; modelo: string },
+  ttlMin: number,
+  agoraMs: number,
+): Promise<{ token: string; expiraEm: string; jti: string }> {
+  const exp = Math.floor(agoraMs / 1000) + ttlMin * 60
+  const jti = base64url(aleatorio(12))
+  const token = await assinarToken(segredo, PREFIXO_CONFIRMACAO, {
+    f: 'confirmacao',
+    m: dados.membroId,
+    s: dados.sessaoUsuarioId,
+    d: dados.aparelhoId,
+    e: dados.episodioId,
+    mo: dados.modelo,
+    exp,
+    j: jti,
+  })
+  return { token, expiraEm: new Date(exp * 1000).toISOString(), jti }
+}
+
+export async function verificarTokenConfirmacao(
+  segredo: string,
+  token: string,
+  esperado: { sessaoUsuarioId: string; aparelhoId: string | null; episodioId: string; modelo: string },
+  agoraMs: number,
+): Promise<TokenConfirmacao | null> {
+  const p = await verificarToken(segredo, PREFIXO_CONFIRMACAO, token)
+  if (!p || p.f !== 'confirmacao') return null
+  if (typeof p.exp !== 'number' || p.exp * 1000 <= agoraMs) return null
+  if (typeof p.m !== 'string' || typeof p.j !== 'string') return null
+  if (p.s !== esperado.sessaoUsuarioId || p.e !== esperado.episodioId || p.mo !== esperado.modelo) return null
+  if ((typeof p.d === 'string' ? p.d : null) !== esperado.aparelhoId) return null
+  return { membroId: p.m, jti: p.j, expiraEm: new Date(p.exp * 1000).toISOString() }
 }

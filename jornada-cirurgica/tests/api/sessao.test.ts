@@ -110,6 +110,18 @@ describe.skipIf(!bancoPronto)('sessão, inscrição e PIN (banco real)', () => {
     }
   })
 
+  it('corpo (autenticado): JSON inválido, ação desconhecida, limite de 256 KB e 7,2 MB só para a foto', async () => {
+    const tok = `Bearer ${await amb.token(U.concierge)}`
+    const req = (corpo: string) =>
+      amb.handler(new Request('http://localhost/functions/v1/jornada-cirurgica', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: tok, 'x-jornada-aparelho': APARELHO }, body: corpo }))
+    expect((await req('{x')).status).toBe(400)
+    expect((await req(JSON.stringify({ acao: '__proto__', dados: {} }))).status).toBe(404)
+    expect((await req(JSON.stringify({ acao: 'sessao', dados: { x: 'a'.repeat(300_000) } }))).status).toBe(413)
+    const foto = await req(JSON.stringify({ acao: 'anexo.enviar', dados: { x: 'a'.repeat(1_000_000) } }))
+    expect(foto.status).toBe(400) // passou do limite de 256 KB; recusado pela validação, não pelo tamanho
+    expect((await req(JSON.stringify({ acao: 'anexo.enviar', dados: { x: 'a'.repeat(7_300_000) } }))).status).toBe(413)
+  })
+
   it('gestão exige a gestora com o próprio login (sem troca por PIN)', async () => {
     expect((await amb.chamar(U.concierge, 'membros.listar', {})).status).toBe(403)
     const viaPin = await amb.pin(U.concierge, U.gestora)

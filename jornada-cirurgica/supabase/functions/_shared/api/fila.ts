@@ -6,7 +6,7 @@
 // reenviado automaticamente: reconciliação manual. Em modo ensaio nada sai (as mensagens já
 // nascem `ensaio` e esta função não reivindica nada).
 
-import { montarEstado, projetarVisao, type Ator } from '../dominio/index.ts'
+import { dataLocal, montarEstado, projetarVisao, type Ator } from '../dominio/index.ts'
 import type { FetchLike } from './auth.ts'
 import type { ConfigApi, ConfigMeta } from './config.ts'
 import type { Db, Executor } from './db.ts'
@@ -82,7 +82,7 @@ export function criarClienteMeta(config: ConfigMeta, f: FetchLike = (u, i) => fe
 
 export interface DepsFila {
   db: Db
-  config: Pick<ConfigApi, 'envioHabilitado' | 'segredoAtor'>
+  config: Pick<ConfigApi, 'envioHabilitado' | 'segredoAtor' | 'filaValidadeMin'>
   meta: ClienteMeta | null
   logger: Logger
   relogio?: () => Date
@@ -96,11 +96,14 @@ export interface ResultadoFila {
   falhas: number
   desconhecidas: number
   canceladas: number
+  /** Pendentes vencidas (mais antigas que `filaValidadeMin` ou de outra data local): canceladas sem envio. */
+  expiradas: number
 }
 
 const LEITOR_SISTEMA: Ator = { id: ATOR_SISTEMA_ID, nome: 'Sistema', papeis: ['gestora'], sessaoUsuarioId: ATOR_SISTEMA_ID, aparelhoId: null }
 
 interface Reivindicada {
+  criadoEm: string
   id: string
   episodioId: string
   telefone: string
@@ -119,13 +122,28 @@ async function mudarEstado(tx: Executor, id: string, estado: 'enviado' | 'falhou
 }
 
 export async function processarFila(deps: DepsFila): Promise<ResultadoFila> {
-  const r: ResultadoFila = { modo: deps.config.envioHabilitado ? 'real' : 'ensaio', reivindicadas: 0, enviadas: 0, falhas: 0, desconhecidas: 0, canceladas: 0 }
+  const r: ResultadoFila = { modo: deps.config.envioHabilitado ? 'real' : 'ensaio', reivindicadas: 0, enviadas: 0, falhas: 0, desconhecidas: 0, canceladas: 0, expiradas: 0 }
   if (!deps.config.envioHabilitado || !deps.meta) {
     deps.logger.info('fila', { resultado: deps.config.envioHabilitado ? 'sem_cliente_meta' : 'ensaio', quantidade: 0 })
     return r
   }
   const agora = (deps.relogio ?? (() => new Date()))()
   const limite = Math.min(Math.max(deps.limite ?? 20, 1), 100)
+  // [S] Validade: aviso atrasado é pior que nenhum. Pendente mais antiga que `filaValidadeMin` ou criada
+  // noutra data local (America/Sao_Paulo) é cancelada como 'expirada' e nunca sai.
+  r.expiradas = await deps.db.transacao(async tx => {
+    await comoSistema(tx)
+    const vencidas = await tx.consulta(
+      `select id from ${S}.mensagens_saida
+        where estado = 'pendente'
+          and (criado_em < $1::timestamptz - make_interval(mins => $2::int)
+               or (criado_em at time zone 'America/Sao_Paulo')::date <> ($1::timestamptz at time zone 'America/Sao_Paulo')::date)
+        order by criado_em limit 500 for update skip locked`,
+      [agora.toISOString(), deps.config.filaValidadeMin],
+    )
+    for (const v of vencidas) await mudarEstado(tx, String(v.id), 'cancelado', { ultimoErro: 'expirada', detalhe: { motivo: 'expirada' } })
+    return vencidas.length
+  })
   const lote: Reivindicada[] = await deps.db.transacao(async tx => {
     await comoSistema(tx)
     const linhas = await tx.consulta(`select * from ${S}.reivindicar_mensagens($1::int)`, [limite])
@@ -136,12 +154,20 @@ export async function processarFila(deps: DepsFila): Promise<ResultadoFila> {
       texto: String(l.texto ?? ''),
       modeloMeta: l.modelo_meta === null || l.modelo_meta === undefined ? null : String(l.modelo_meta),
       parametros: (l.parametros ?? {}) as Record<string, string>,
+      criadoEm: l.criado_em instanceof Date ? l.criado_em.toISOString() : String(l.criado_em),
     }))
   })
   r.reivindicadas = lote.length
 
   for (const m of lote) {
     try {
+      // 0) Venceu entre a varredura e a reivindicação? (mesma regra de validade)
+      const criado = Date.parse(m.criadoEm)
+      if (!Number.isFinite(criado) || agora.getTime() - criado > deps.config.filaValidadeMin * 60_000 || dataLocal(m.criadoEm) !== dataLocal(agora.toISOString())) {
+        await deps.db.transacao(tx => mudarEstado(tx, m.id, 'cancelado', { ultimoErro: 'expirada', detalhe: { motivo: 'expirada' } }))
+        r.expiradas++
+        continue
+      }
       // 1) O domínio ainda permite avisos? (intercorrência, hard stop, suspensão, cancelamento)
       const suspensos = await deps.db.transacao(async tx => {
         const entrada = await carregarEntrada(tx, m.episodioId, { tipo: 'completo' })
@@ -183,6 +209,6 @@ export async function processarFila(deps: DepsFila): Promise<ResultadoFila> {
       r.desconhecidas++
     }
   }
-  deps.logger.info('fila', { resultado: 'lote', quantidade: r.reivindicadas, enviadas: r.enviadas, falhas: r.falhas, desconhecidas: r.desconhecidas, canceladas: r.canceladas })
+  deps.logger.info('fila', { resultado: 'lote', quantidade: r.reivindicadas, enviadas: r.enviadas, falhas: r.falhas, desconhecidas: r.desconhecidas, canceladas: r.canceladas, expiradas: r.expiradas })
   return r
 }

@@ -24,6 +24,8 @@ export interface RespostaInterna {
   motivoForaDeHora: string | null
   correcoes: number
   eventoId: string
+  /** Posição do evento na dobra (ordem real de registro). */
+  ordem: number
 }
 
 export interface ConclusaoInterna {
@@ -93,6 +95,12 @@ export interface CicloLente {
 export interface TrilhaAlerta {
   geradoEm: string
   ativo: boolean
+  /** Última mudança: geração, mudança de conteúdo, desativação ou reativação. */
+  atualizadoEm: string
+  atualizadoOrdem: number
+  /** Conteúdo comunicável (título, descrição, nível) da última vez em que esteve ativo. */
+  assinatura: string
+  ultimo: { titulo: string; descricao: string; nivel: 'alerta' | 'sinalizado'; origem: { modelo: ModeloId | 'sistema'; itemId?: string } }
 }
 
 export interface TrilhaHardStop {
@@ -108,8 +116,10 @@ export interface EstadoInterno extends Estado {
   respostas: Partial<Record<ModeloId, Record<string, RespostaInterna>>>
   conclusoes: Partial<Record<ModeloId, ConclusaoInterna>>
   ciclos: CicloLente[]
-  alertasComunicados: Record<string, { porId: string; em: string; via: ViaComunicacao; cirurgiaoId: string; observacao: string | null }>
-  condutas: Record<string, { texto: string; cirurgiaoId: string; em: string }>
+  alertasComunicados: Record<string, { porId: string; em: string; via: ViaComunicacao; cirurgiaoId: string; observacao: string | null; ordem: number }>
+  condutas: Record<string, { texto: string; cirurgiaoId: string; em: string; ordem: number }>
+  /** Contador de eventos dobrados (ordem real). */
+  contador: number
   trilhaAlertas: Record<string, TrilhaAlerta>
   trilhaHardStops: Partial<Record<CodigoHardStop, TrilhaHardStop>>
   /** Hard stops de resolução escrita: ocorrência aberta até `hardstop.resolvido`. */

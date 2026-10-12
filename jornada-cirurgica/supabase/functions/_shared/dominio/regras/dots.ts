@@ -1,11 +1,12 @@
 // Dots da pulseira (POP §2): cor E letra, no máximo 6, calculados dos registros.
 // A fonte de verdade é o prontuário; ausência de dot não significa ausência de risco.
 
-import { D7, ITENS_ALERGIA } from '../modelos/ids.ts'
+import { ADM, D7, ITENS_ALERGIA } from '../modelos/ids.ts'
 import type { Dot, LetraDot, ValorAlergia } from '../tipos.ts'
-import { ehSim, itemDoModelo, valor } from '../estado/consultas.ts'
+import { ehSim, itemDoModelo, valor, valorAplicavel } from '../estado/consultas.ts'
 import type { EstadoInterno } from '../estado/tipos.ts'
 import { medicamento, usaOuUsou } from './alertas.ts'
+import { ehOlhoUnico } from './identificacao.ts'
 
 export const LEGENDA_DOTS: Record<LetraDot, Pick<Dot, 'letra' | 'cor' | 'rotulo'>> = {
   A: { letra: 'A', cor: 'vermelho', rotulo: 'Alergia' },
@@ -34,17 +35,22 @@ export function calcularDots(est: EstadoInterno): Dot[] {
 
   // A — Alergia: qualquer alergia registrada.
   const alergias = ITENS_ALERGIA.filter((id) => alergiaRegistrada(valor(est, 'd7', id))).map((id) => textoItem(est, id))
-  if (alergias.length) add('A', `Alergia registrada: ${alergias.join(', ')}.`)
+  const nova = valorAplicavel(est, 'admissao', ADM.alergiaNova)
+  const partesA: string[] = []
+  if (alergias.length) partesA.push(`Alergia registrada: ${alergias.join(', ')}.`)
+  if (typeof nova === 'string' && nova.trim()) partesA.push(`Alergia nova na admissão: ${nova.trim()}.`)
+  if (partesA.length) add('A', partesA.join(' '))
 
-  // Q — Risco de queda: cadeira de rodas, marcha instável, baixa visão no olho contralateral (olho único/ambliopia).
-  // Gatilho "sedação" do POP: pendente (se todo paciente recebe sedação, Q seria universal).
+  // Q — Risco de queda (POP §2): cadeira de rodas, marcha instável, baixa visão no olho contralateral; olho único (§11).
+  // Ambliopia sozinha não basta. Gatilho "sedação" do POP: pendente (se todo paciente recebe sedação, Q seria universal).
   const motivosQ: string[] = []
   const mob = valor(est, 'd7', D7.mobilidade)
   if (Array.isArray(mob)) {
     if (mob.includes('cadeira_rodas')) motivosQ.push('cadeira de rodas')
     if (mob.includes('marcha_instavel')) motivosQ.push('marcha instável / risco de queda')
   }
-  if (ehSim(est, 'd7', D7.olhoUnico)) motivosQ.push('olho único ou ambliopia (baixa visão no olho contralateral)')
+  if (ehSim(est, 'd7', D7.baixaVisaoContralateral)) motivosQ.push('baixa visão no olho contralateral')
+  if (ehOlhoUnico(est)) motivosQ.push('olho único (POP §11)')
   if (motivosQ.length) add('Q', `Risco de queda: ${motivosQ.join('; ')}.`)
 
   // M — Membro restrito: fístula, mastectomia ou esvaziamento axilar.

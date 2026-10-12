@@ -77,7 +77,8 @@ export function criarAutenticadorSupabase(opcoes: { supabaseUrl: string; anonKey
       if (!RE_UUID.test(id) || !email) throw erro('nao_autenticado')
       // O payload precisa ser do mesmo usuário que o Auth devolveu.
       if (payload.sub !== id) throw erro('nao_autenticado')
-      const emailConfirmado = Boolean(usuario.email_confirmed_at || usuario.confirmed_at)
+      // Só `email_confirmed_at` (confirmação do e-mail); `confirmed_at` também cobre telefone.
+      const emailConfirmado = typeof usuario.email_confirmed_at === 'string' && usuario.email_confirmed_at !== ''
       return { userId: id.toLowerCase(), email, emailConfirmado, aal: payload.aal === 'aal2' ? 'aal2' : 'aal1' }
     },
   }

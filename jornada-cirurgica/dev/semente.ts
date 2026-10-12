@@ -112,8 +112,7 @@ export async function semear(deps: DepsSemente): Promise<void> {
 
 async function semearCenarios(deps: DepsSemente, passo: (nome: string, fn: () => Promise<unknown>) => Promise<boolean>): Promise<void> {
   const { chamar } = clienteApi(deps)
-  const pin = async (sessao: Pessoa, alvo: Pessoa) => (await chamar(sessao as UsuarioFicticio, 'ator.pin', { membroId: alvo.id, pin: PIN_DEV })).token
-  const r = roteiro(chamar as Chamar, US, pin)
+  const r = roteiro(chamar as Chamar, US, PIN_DEV)
   const hoje = dataLocalDev(0)
   const amanha = dataLocalDev(1)
   const em7 = dataLocalDev(7)

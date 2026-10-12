@@ -63,13 +63,13 @@ Leituras em lista (`dia.lista`, `episodios.buscar`, `pendencias.listar`, `resumo
 ## 2. PIN e troca rápida de usuário
 
 - `membro.definir_pin` vale sempre para o usuário do login (ignora o ator). Com PIN já definido, exige `pinAtual`. Recusa sequências e repetidos.
-- `ator.pin {membroId, pin}`: falha registra `acessos(recurso 'pin_falha', detalhe {alvo})`; bloqueio (`limite_taxa`) com 5 falhas por membro-alvo ou 10 por usuário do login em 15 min. Sucesso registra `acessos('ator_pin')`. Mensagem de falha: "PIN não confere." (403 `sem_permissao`, `detalhes.motivo = 'pin'`).
+- `ator.pin {membroId, pin}`: limite à prova de concorrência (ver "Correções da revisão de segurança", item 2): `pin_tentativa` gravada antes do hash, depois `pin_ok` ou `pin_falha`; bloqueio (`limite_taxa`) com 5 tentativas sem sucesso por membro-alvo ou 10 por usuário do login em 15 min. Mensagem de falha: "PIN não confere." (403 `sem_permissao`, `detalhes.motivo = 'pin'`).
 - Eventos: `autor_id` = ator; `sessao_usuario_id` = login; `aparelho_id` = `x-jornada-aparelho`.
-- `bloco.concluir.confirmadorToken`: token de ator de quem confirmou a leitura em voz alta, preso à mesma sessão e aparelho → `confirmadorId` para o domínio.
+- `bloco.concluir.confirmadorToken`: SÓ o token de `ator.confirmacao` (item 3 das correções) → `confirmadorId` para o domínio. `leitorId`, quando enviado, tem de ser o próprio ator.
 
 ## 3. CPF e Datasigh
 
-- `paciente.buscar_cpf`: papel conferido pela matriz (`paciente.cadastrado`: concierge, gestora); `validarCpf`/`normalizarCpf` do domínio; limite `JORNADA_CPF_CONSULTAS_HORA` por usuário do LOGIN (a troca por PIN não contorna), contado em `acessos('cpf_consulta')` (gravado antes da consulta, sem o CPF); HMAC-SHA256 (`JORNADA_SEGREDO_CPF`, rótulo `cpf`, hex de 64); paciente existente por `cpf_hmac` ou `datasigh_id` (nunca nome/telefone); a leitura grava `acessos('paciente')`.
+- `paciente.buscar_cpf` e `paciente.cadastrar` com CPF: papel conferido pela matriz (`paciente.cadastrado`: concierge, gestora) antes de tudo; `validarCpf`/`normalizarCpf` do domínio; limite `JORNADA_CPF_CONSULTAS_HORA` por usuário do LOGIN (a troca por PIN não contorna), contado em `acessos('cpf_consulta', detalhe {origem: 'busca'|'cadastro'})`, gravado antes da consulta numa transação confirmada e serializada por usuário (sem o CPF); "já cadastrado" não devolve o id; HMAC-SHA256 (`JORNADA_SEGREDO_CPF`, rótulo `cpf`, hex de 64); paciente existente por `cpf_hmac` ou `datasigh_id` (nunca nome/telefone); a leitura grava `acessos('paciente')`.
 - Datasigh: só GET; `DATASIGH_CAMINHO_BUSCA_CPF` relativo à `DATASIGH_BASE_URL`, com `{cpf}` (11 dígitos) ou `{cpf_formatado}`; não pode sair do host da base; `redirect: 'error'`; cabeçalho de autenticação `DATASIGH_AUTH_HEADER: DATASIGH_AUTH_VALOR`. `DATASIGH_MAPA_CAMPOS` (JSON, caminhos com ponto): `lista` (onde está a lista de resultados, opcional), `datasighId`, `nomeCompleto`, `dataNascimento` (aceita `aaaa-mm-dd` e `dd/mm/aaaa`; outro formato é omitido), `prontuario`, `telefones` (um caminho ou vários). Sem caminho/mapa → `nao_configurado`; 404, lista vazia ou registro sem nenhum campo mapeado → `nao_encontrado`; erro, timeout (8 s, `DATASIGH_TIMEOUT_MS`), JSON inválido ou mais de um cadastro distinto → `indisponivel`. Só os campos que vieram são devolvidos.
 - **Pendente**: documentação do Datasigh (caminho real, nome do parâmetro, formato do CPF, campos, autenticação). Nada disso foi inventado: tudo é configuração.
 
@@ -103,6 +103,7 @@ Leituras em lista (`dia.lista`, `episodios.buscar`, `pendencias.listar`, `resumo
 | **Novas**: `JORNADA_SEGREDO_ENVIOS` | Segredo do agendador da função `jornada-envios`. |
 | `JORNADA_AMBIENTE` | `producao` (padrão fora do modo dev) ou `homologacao`; aparece em `sessao.ambiente`. |
 | `JORNADA_PIN_ITERACOES` | Iterações do PBKDF2 (padrão 310000; mínimo 100000 fora do modo dev). |
+| `JORNADA_FILA_VALIDADE_MIN` | Validade (min) da mensagem pendente na fila; padrão 60 [S]. Vencida ou de outra data local → `cancelado` ('expirada'). |
 | `JORNADA_MODO_DEV` | Só no servidor local. As Edge Functions recusam (503) se estiver `true`. |
 
 ## 7. Servidor local de demonstração
@@ -153,6 +154,33 @@ Os nomes não compartilham o início (Jaro-Winkler do domínio, limiar 0,9): só
 
 ---
 
+## 7.1 Correções da revisão de segurança (12/10/2026)
+
+Cada item tem teste em `tests/api/revisao-seguranca.test.ts` que falhava antes e passa depois (scripts de reprodução do revisor também conferidos).
+
+1. **`paciente.cadastrar` deixava de ser oráculo de CPF.** O papel (`paciente.cadastrado`) é conferido antes de qualquer busca, com a mesma recusa para CPF cadastrado ou novo. Com CPF, consome o mesmo limite por hora da busca e grava `acessos('cpf_consulta', {origem: 'cadastro'})`. "Já cadastrado" responde `validacao` com `detalhes.motivo = 'ja_cadastrado'`, sem o id, orientando a usar a busca por CPF.
+2. **Limites de PIN e CPF à prova de concorrência** (`limites.ts`).
+   - Cada reserva roda numa transação curta e confirmada, serializada por `pg_advisory_xact_lock(hashtextextended('pin:<alvo>'))` e depois `pin-sessao:<login>`, sempre nessa ordem (sem ciclo); para CPF, a chave é `cpf:<login>`.
+   - PIN: a tentativa (`acessos('pin_tentativa', {alvo, tentativa, finalidade})`) é gravada ANTES de conferir o hash; depois vem `pin_ok` ou `pin_falha`. Conta como falha toda tentativa da janela sem `pin_ok`, inclusive pendentes e interrompidas (conservador; um acerto devolve uma vaga). Com 40 PINs errados em paralelo e limite 5, só 5 são avaliados.
+   - O mesmo caminho vale para `ator.pin`, `ator.confirmacao` e o PIN atual de `membro.definir_pin`.
+   - CPF: a consulta (`cpf_consulta`) é contada e gravada antes de chamar o Datasigh ou cadastrar.
+3. **Confirmação da leitura em voz alta com token próprio.**
+   - Ação nova `ator.confirmacao {membroId, pin, episodioId, modelo}` → `{token, expiraEm, ator}` (contrato atualizado). O token tem prefixo `cf1` e `f: 'confirmacao'`, fica preso a episódio, bloco, sessão e aparelho, vale 5 minutos e é de uso único: o `jti` vai para `acessos('confirmacao_usada')` na transação do `bloco.concluir`, serializada pela trava do episódio. Não foi preciso migration.
+   - `x-jornada-ator` recusa esse token (prefixo e `f: 'ator'` próprios). `bloco.concluir.confirmadorToken` só aceita token de confirmação.
+   - `leitorId` diferente do ator é recusado (`validacao`, campo `leitorId`): quem lê é quem conclui, com troca por PIN se for outra pessoa.
+   - Interface: `TrocaPin` modo `confirmador` (com `confirmacao`) chama `ator.confirmacao`. `Sala.tsx` mostra o leitor como "quem está marcando agora" (sem lista para escolher).
+4. **Listas montadas com o estado visível ao ator.** `dia.lista`, `episodios.buscar`, `pendencias.listar`, `resumo.vespera` e `alertas.abertos` usam o estado lido como `jornada_api` (RLS), igual ao `episodio.obter`; a conferente não recebe mais hard stop ou pendência derivados do checkpoint 1.
+   - `indicadores.calcular` (gestora e cirurgião, que veem tudo) continua com o estado completo.
+   - Escolha sobre `episodios.resumo`: continua calculado do estado completo (é a projeção interna do banco), mas a API NUNCA o devolve; toda lista é calculada por ator na hora.
+   - Ler uma lista não grava `lente_conferencia_1`: ela não traz valores de lente, só contagens e etapas.
+5. **[S] Conferência cega pela sessão (decisão conservadora).** `lente.cp2` só com o login da própria conferente: ator = usuário do login, sem troca por PIN (`conferencia_cega`, `detalhes.motivo = 'sessao'`). Também é recusado quando o usuário do login registrou ou consultou dados do checkpoint 1 do episódio, inclusive por troca de ator nessa sessão (acessos `lente_conferencia_1` por `ator_id` ou `sessao_usuario_id`, eventos de conferência 1 ou de plano/chegada, registros de lente). Nesse caso a API passa `atorViuConferencia1 = true` e o domínio recusa.
+6. **E-mail confirmado só por `email_confirmed_at`** (`confirmed_at` também cobre telefone).
+7. **[S] Fila com validade** (`JORNADA_FILA_VALIDADE_MIN`, padrão 60). Mensagem `pendente` mais antiga que isso, ou criada noutra data local (America/Sao_Paulo), passa a `cancelado` com `ultimo_erro = 'expirada'` e `detalhe.motivo = 'expirada'` e nunca é enviada. Isso é conferido numa varredura antes de reivindicar e de novo em cada mensagem reivindicada.
+8. **Corpo só depois da autenticação.**
+   - Equipe: o Auth e o membro (a partir dos cabeçalhos) vêm antes de ler o corpo; sem credencial válida a resposta é 401 sem ler nada. O limite de 7,2 MB vale só para equipe autenticada e só para `anexo.enviar`; o resto fica em 256 KB.
+   - Página do paciente (sem login): lê no máximo 256 KB.
+   - Consequência: requisição sem credencial não informa mais a ação no log (`acao = '-'`).
+
 ## 8. Pendências
 
 - **Datasigh**: documentação do fornecedor (busca por CPF, campos, autenticação). Configurar `DATASIGH_*`; nada a mudar no código se o formato couber no mapa de campos.
@@ -180,7 +208,8 @@ Os nomes não compartilham o início (Jaro-Winkler do domínio, limiar 0,9): só
 
 ## 10. Estado dos testes (12/10/2026, domínio já implementado)
 
-- `npx vitest run tests/api`: **69 testes passando** em 7 arquivos — `infra` (29, sem banco: criptografia, PIN, tokens, autenticação de produção e dev, Datasigh só GET, anexos, configuração, rotas, CORS, cabeçalhos, limites, mapeamento de erros), `sessao` (9: inscrição por convite, MFA, PIN, ator, encerrar, bloqueio), `cpf` (5: HMAC, CPF ausente do banco e dos logs, limite por login, Datasigh só GET, sem união por nome), `matriz` (2: `papeisPermitidosParaEvento` = `permissoes_evento`), `fluxo` (14: D-7, PIN, conflito de versão, conferência cega por TODAS as ações de leitura com controle positivo, autora e leitora do checkpoint 1 recusadas, quarentena, hard stop, sequência completa de avisos em ensaio, intercorrência sem avisos, página do paciente, CORS), `fila` (5: cliente Meta, enviado/falhou/desconhecido, sem reenvio, ensaio intocado, cancelamento por avisos suspensos), `gestao` (5: semeadura dos modelos como sistema, publicação versionada, config, materiais, membros).
-- Suíte inteira (`npx vitest run`): passando junto com os testes do domínio, do banco e da interface (rodada três vezes seguidas sem falha nos arquivos da API).
+- `npx vitest run tests/api`: **88 testes passando** em 8 arquivos (inclui `revisao-seguranca`, 18 testes) — `infra` (29, sem banco: criptografia, PIN, tokens, autenticação de produção e dev, Datasigh só GET, anexos, configuração, rotas, CORS, cabeçalhos, limites, mapeamento de erros), `sessao` (10: inscrição por convite, MFA, PIN, ator, encerrar, bloqueio, limites do corpo autenticado), `cpf` (5: HMAC, CPF ausente do banco e dos logs, limite por login, Datasigh só GET, sem união por nome), `matriz` (2: `papeisPermitidosParaEvento` = `permissoes_evento`), `fluxo` (14: D-7, PIN, conflito de versão, conferência cega por TODAS as ações de leitura com controle positivo, autora e leitora do checkpoint 1 recusadas, quarentena, hard stop, sequência completa de avisos em ensaio, intercorrência sem avisos, página do paciente, CORS), `fila` (5: cliente Meta, enviado/falhou/desconhecido, sem reenvio, ensaio intocado, cancelamento por avisos suspensos), `gestao` (5: semeadura dos modelos como sistema, publicação versionada, config, materiais, membros), `revisao-seguranca` (18: itens 1 a 8 da §7.1).
+- Suíte inteira (`npx vitest run`): passando junto com os testes do banco e da interface (rodada três vezes seguidas sem falha nos arquivos da API). Na rodada das correções de segurança, 3 testes de `tests/dominio` falharam por uma troca de versão dos modelos (`pop-0.4/2`) que o agente domínio fazia em paralelo; não envolvem a API.
+- Correções de segurança: `npx tsc -p tsconfig.json --noEmit` sem erros, `npx vite build --config web/vite.config.ts` ok, `npx playwright test` 5/5 e testes de `web/src` passando.
 - `npx tsc -p tsconfig.json --noEmit`: nenhum erro em `supabase/functions/_shared/api`, `dev/` e `tests/api`. Pontos de entrada Deno conferidos com tsconfig à parte (tipos simulados de `Deno` e `npm:postgres`).
 - Servidor local conferido em banco e porta separados (semente completa, Datasigh fictício encontrado/indisponível, página do paciente por `/dev/links`); banco de conferência apagado depois.

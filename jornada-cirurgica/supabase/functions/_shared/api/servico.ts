@@ -128,6 +128,8 @@ export async function lerVisao(tx: Executor, ctx: ContextoReq, episodioId: strin
 // ---------------------------------------------------------------------------
 
 export interface OpcoesComando {
+  /** Executado como jornada_sistema, com o estado completo carregado e ANTES da decisão; pode completar o contexto. */
+  antesDeDecidir?: (tx: Executor, entrada: EntradaEstado) => Promise<Partial<ContextoDecisao> | void>
   /** Executado depois da decisão e antes de gravar (ex.: subir anexo, criar link). Papel: jornada_api. */
   antesDeGravar?: (tx: Executor, r: ResultadoDecisao, estado: Estado, entrada: EntradaEstado) => Promise<void>
   /** Campos da agenda a projetar em `episodios` (episodio.agendar). */
@@ -158,9 +160,10 @@ export async function executarComando(
     if (!entrada) throw erro('nao_encontrado')
     if (entrada.episodio.versao !== versaoEsperada) throw erro('conflito_versao', undefined, { versaoAtual: entrada.episodio.versao })
     const viu = await atorViuConferencia1(tx, ctx.ator.id, episodioId)
+    const extra = (opcoes.antesDeDecidir ? await opcoes.antesDeDecidir(tx, entrada) : undefined) ?? {}
     const estado = montarEstado(entrada)
     const comando = await construir(estado, entrada)
-    const resultado = decidir(estado, comando, contextoDecisao(ctx, entrada.config, { atorViuConferencia1: viu, ...opcoes.ctxExtra }))
+    const resultado = decidir(estado, comando, contextoDecisao(ctx, entrada.config, { atorViuConferencia1: viu, ...opcoes.ctxExtra, ...extra }))
     const { estadoNovo, eventos } = await gravarResultado(tx, ctx, entrada, resultado, opcoes)
     if (opcoes.depoisDeGravar) await opcoes.depoisDeGravar(tx, eventos, estadoNovo)
     return lerVisao(tx, ctx, episodioId, cache)

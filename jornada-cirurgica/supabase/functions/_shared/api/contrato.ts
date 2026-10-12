@@ -85,6 +85,15 @@ export interface ResultadoBuscaCpf {
 export interface AcoesEquipe {
   'sessao': { E: Record<string, never>; S: SessaoDados }
   'ator.pin': { E: { membroId: string; pin: string }; S: { token: string; expiraEm: string; ator: { id: string; nome: string; papeis: Papel[] } } }
+  /**
+   * Confirmação da leitura em voz alta (Sign In, Time Out): PIN de quem confirmou → token de finalidade
+   * própria, preso ao episódio, ao bloco, à sessão e ao aparelho, curto e de uso único. Só vale em
+   * `bloco.concluir.confirmadorToken`; nunca como `x-jornada-ator`.
+   */
+  'ator.confirmacao': {
+    E: { membroId: string; pin: string; episodioId: string; modelo: ModeloId }
+    S: { token: string; expiraEm: string; ator: { id: string; nome: string; papeis: Papel[] } }
+  }
   'ator.encerrar': { E: Record<string, never>; S: { ok: true } }
   'membro.definir_pin': { E: { pinNovo: string; pinAtual?: string | null }; S: { ok: true } }
   'membros.ativos': { E: { papel?: Papel }; S: { id: string; nome: string; papeis: Papel[] }[] }
@@ -106,7 +115,10 @@ export interface AcoesEquipe {
     E: { episodioId: string; versao: number; modelo: ModeloId; respostas: { itemId: string; valor: ValorResposta; observacao?: string | null }[] }
     S: EpisodioVisao
   }
-  /** Sign In e Time Out: `confirmadorToken` = token de ator (PIN) de quem confirmou a leitura em voz alta. */
+  /**
+   * Sign In e Time Out: `confirmadorToken` = token de `ator.confirmacao` (PIN de quem confirmou a leitura
+   * em voz alta). `leitorId`, quando enviado, tem de ser o próprio ator (quem leu é quem conclui).
+   */
   'bloco.concluir': { E: { episodioId: string; versao: number; modelo: ModeloId; leitorId?: string | null; confirmadorToken?: string | null }; S: EpisodioVisao }
   'alerta.comunicar': { E: { episodioId: string; versao: number; alertaId: string; via: ViaComunicacao; cirurgiaoId: string; observacao?: string | null }; S: EpisodioVisao }
   'alerta.conduta': { E: { episodioId: string; versao: number; alertaId: string; conduta: string }; S: EpisodioVisao }

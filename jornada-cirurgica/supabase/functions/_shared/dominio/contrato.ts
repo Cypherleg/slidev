@@ -173,6 +173,9 @@ export type CausaCancelamento =
   | 'lio_indisponivel'
   | 'outra'
 
+/** Categoria do quase-evento (indicador 4 do POP §12 conta só identidade, olho e LIO). */
+export type CategoriaQuaseEvento = 'identidade' | 'olho' | 'lio' | 'outro'
+
 /** Never events (POP §12, indicador 5). Acréscimo opcional ao comando de intercorrência. */
 export type NeverEvent = 'olho_errado' | 'paciente_errado' | 'lio_errada'
 
@@ -201,7 +204,7 @@ export type Comando =
   | { tipo: 'episodio.cancelar'; motivo: string; causa: CausaCancelamento | null; evitavel: boolean | null }
   | { tipo: 'avisos.atraso'; minutos: number | null }
   | { tipo: 'etiqueta.copiada'; etiqueta: TipoEtiqueta }
-  | { tipo: 'quase_evento.registrar'; etapa: 'chegada' | 'd2' | 'd0'; descricao: string }
+  | { tipo: 'quase_evento.registrar'; etapa: 'chegada' | 'd2' | 'd0'; descricao: string; categoria?: CategoriaQuaseEvento | null }
 
 export interface MaterialCatalogo {
   id: string

@@ -350,26 +350,20 @@ describe('handler HTTP (sem banco)', () => {
     expect(await r.json()).toEqual({ ok: false, erro: { codigo: 'nao_autenticado', mensagem: expect.any(String) } })
   })
 
-  it('método, tipo de conteúdo, JSON inválido, ação desconhecida, corpo grande, rota', async () => {
+  it('método, tipo de conteúdo, rota e credencial: recusados antes do corpo e do banco', async () => {
     const { h } = handlerSemBanco()
-    const tok = `Bearer ${await emitirTokenDev(SEGREDO_DEV, { id: 'a0000000-0000-4000-8000-000000000001', email: 'x@exemplo.test' })}`
     expect((await h(new Request('http://localhost/functions/v1/jornada-cirurgica', { method: 'GET' }))).status).toBe(405)
     expect((await h(new Request('http://localhost/functions/v1/jornada-cirurgica', { method: 'POST', body: '{}', headers: { 'Content-Type': 'text/plain' } }))).status).toBe(415)
-    const inval = await h(post('/functions/v1/jornada-cirurgica', '{x', { Authorization: tok }))
-    expect(inval.status).toBe(400)
-    const latin1 = await h(new Request('http://localhost/functions/v1/jornada-cirurgica', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: new Uint8Array([0x7b, 0xff, 0x7d]) }))
-    expect(latin1.status).toBe(400)
-    const desconhecida = await h(post('/functions/v1/jornada-cirurgica', { acao: '__proto__', dados: {} }, { Authorization: tok }))
-    expect(desconhecida.status).toBe(404)
-    const grande = await h(post('/functions/v1/jornada-cirurgica', { acao: 'sessao', dados: { x: 'a'.repeat(300_000) } }, { Authorization: tok }))
-    expect(grande.status).toBe(413)
-    const enorme = await h(post('/functions/v1/jornada-cirurgica', { acao: 'anexo.enviar', dados: { x: 'a'.repeat(7_300_000) } }, { Authorization: tok }))
-    expect(enorme.status).toBe(413)
     expect((await h(post('/functions/v1/outra', { acao: 'sessao' }))).status).toBe(404)
     const semToken = await h(post('/functions/v1/jornada-cirurgica', { acao: 'sessao', dados: {} }))
     expect(semToken.status).toBe(401)
     const tokenRuim = await h(post('/functions/v1/jornada-cirurgica', { acao: 'sessao', dados: {} }, { Authorization: 'Bearer dev1.e30.xxx' }))
     expect(tokenRuim.status).toBe(401)
+    // Corpo declarado acima do limite: recusado sem ler (página do paciente, 256 KB).
+    const grande = await h(new Request('http://localhost/functions/v1/jornada-paciente', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': String(300_000) }, body: 'x'.repeat(300_000) }))
+    expect(grande.status).toBe(413)
+    const latin1 = await h(new Request('http://localhost/functions/v1/jornada-paciente', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: new Uint8Array([0x7b, 0xff, 0x7d]) }))
+    expect(latin1.status).toBe(400)
   })
 
   it('página do paciente: token malformado não toca no banco', async () => {
@@ -386,11 +380,12 @@ describe('handler HTTP (sem banco)', () => {
     expect(r.status).toBe(404)
   })
 
-  it('log sem corpo nem dado: só ação, status e código', async () => {
+  it('log sem corpo nem dado: só função, status e código', async () => {
     const { h, logger } = handlerSemBanco()
     await h(post('/functions/v1/jornada-cirurgica', { acao: 'paciente.buscar_cpf', dados: { cpf: cpfTeste(3) } }))
     expect(logger.linhas.join('\n')).not.toContain(cpfTeste(3))
-    expect(logger.linhas[0]).toContain('"acao":"paciente.buscar_cpf"')
+    expect(logger.linhas[0]).toContain('"funcao":"equipe"')
+    expect(logger.linhas[0]).toContain('"status":401')
   })
 })
 

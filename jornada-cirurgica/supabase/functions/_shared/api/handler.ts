@@ -99,8 +99,11 @@ async function lerCorpo(req: Request, limite: number): Promise<{ texto: string; 
 
 const temAcao = (obj: object, acao: string) => Object.prototype.hasOwnProperty.call(obj, acao)
 
-/** Membro e ator a partir do Auth verificado (nunca do corpo). */
-async function contextoEquipe(deps: DepsApi, req: Request, acao: AcaoEquipe): Promise<ContextoReq> {
+/**
+ * Usuário (Auth), membro e ator a partir dos cabeçalhos — ANTES de ler o corpo: requisição sem
+ * credencial válida nunca faz o servidor ler um corpo grande. O ator vem do Auth, nunca do corpo.
+ */
+async function contextoEquipe(deps: DepsApi, req: Request): Promise<ContextoReq> {
   const token = extrairBearer(req.headers.get('authorization'))
   if (!token) throw erro('nao_autenticado')
   const usuario = await deps.autenticador.verificar(token)
@@ -136,11 +139,6 @@ async function contextoEquipe(deps: DepsApi, req: Request, acao: AcaoEquipe): Pr
   if (r.tipo === 'sem_acesso') throw erro('sem_permissao', 'Usuário sem acesso a este painel.')
   if (r.tipo === 'ator_invalido') throw erro('nao_autenticado', 'A troca de usuário expirou. Informe o PIN de novo.', { motivo: 'ator' })
 
-  // Segundo fator: exigido do usuário que fez o login (cirurgião e gestora). `sessao` responde
-  // mesmo assim, para a interface saber que precisa pedir o código.
-  if (deps.config.exigirMfa && acao !== 'sessao' && usuario.aal !== 'aal2' && r.membro.papeis.some(p => (PAPEIS_MFA as readonly string[]).includes(p))) {
-    throw erro('mfa_exigido')
-  }
   return {
     deps,
     usuario,
@@ -149,6 +147,16 @@ async function contextoEquipe(deps: DepsApi, req: Request, acao: AcaoEquipe): Pr
     atorViaPin: r.atorViaPin,
     aparelhoId,
     agora,
+  }
+}
+
+/**
+ * Segundo fator: exigido do usuário que fez o login (cirurgião e gestora). `sessao` responde mesmo
+ * assim, para a interface saber que precisa pedir o código.
+ */
+function conferirMfa(deps: DepsApi, ctx: ContextoReq, acao: AcaoEquipe): void {
+  if (deps.config.exigirMfa && acao !== 'sessao' && ctx.usuario.aal !== 'aal2' && ctx.membro.papeis.some(p => (PAPEIS_MFA as readonly string[]).includes(p))) {
+    throw erro('mfa_exigido')
   }
 }
 
@@ -183,7 +191,10 @@ export function criarHandler(entrada: DepsHandler): (req: Request) => Promise<Re
       const tipo = (req.headers.get('content-type') ?? '').toLowerCase()
       if (!tipo.startsWith('application/json')) throw new ErroApiHttp('validacao', 'Envie JSON.', undefined, 415)
 
-      const { texto, bytes } = await lerCorpo(req, config.limiteCorpoAnexoBytes)
+      // Equipe: autentica (Auth + membro) ANTES de ler o corpo; o limite maior (foto) só para quem
+      // passou. Página do paciente (sem login): 256 KB.
+      const ctxEquipe = funcao === 'equipe' ? await contextoEquipe(deps, req) : null
+      const { texto, bytes } = await lerCorpo(req, ctxEquipe ? config.limiteCorpoAnexoBytes : config.limiteCorpoBytes)
       let corpo: unknown
       try {
         corpo = JSON.parse(texto)
@@ -195,11 +206,12 @@ export function criarHandler(entrada: DepsHandler): (req: Request) => Promise<Re
       if (typeof acao !== 'string') throw erro('validacao', 'Ação ausente.')
       const dadosObj = v.objeto(dados, 'dados')
 
-      if (funcao === 'equipe') {
+      if (ctxEquipe) {
         if (!temAcao(acoesEquipe, acao)) throw erro('nao_encontrado', 'Ação desconhecida.')
         acaoLog = acao
         if (acao !== 'anexo.enviar' && bytes > config.limiteCorpoBytes) throw new ErroApiHttp('validacao', 'Requisição grande demais.', undefined, 413)
-        const ctx = await contextoEquipe(deps, req, acao as AcaoEquipe)
+        conferirMfa(deps, ctxEquipe, acao as AcaoEquipe)
+        const ctx = ctxEquipe
         const fn = acoesEquipe[acao as AcaoEquipe] as (c: ContextoReq, d: v.Obj) => Promise<unknown>
         const saida = await fn(ctx, dadosObj)
         logger.info('requisicao', { funcao, acao: acaoLog, status: 200, ms: Date.now() - inicio })

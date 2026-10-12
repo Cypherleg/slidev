@@ -41,9 +41,13 @@ export function dataLocal(deslocDias = 0, base = new Date()): string {
 }
 
 /**
- * `pin(sessao, alvo)`: token de ator do alvo, obtido na sessão de `sessao` (confirmação em voz alta).
+ * `pin`: PIN dos usuários fictícios. A confirmação da leitura em voz alta usa `ator.confirmacao`
+ * (token próprio, preso ao episódio e ao bloco, de uso único).
  */
-export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: Pessoa) => Promise<string>) {
+export function roteiro(chamar: Chamar, eq: Equipe, pin: string) {
+  const confirmacao = async (sessao: Pessoa, alvo: Pessoa, episodioId: string, modelo: ModeloId) =>
+    (await chamar(sessao, 'ator.confirmacao', { membroId: alvo.id, pin, episodioId, modelo })).token
+
   const obter = (id: string, quem: Pessoa = eq.concierge): Promise<EpisodioVisao> => chamar(quem, 'episodio.obter', { episodioId: id })
 
   const com = async <A extends AcaoEquipe>(id: string, quem: Pessoa, acao: A, dados: Omit<AcoesEquipe[A]['E'], 'episodioId' | 'versao'>): Promise<AcoesEquipe[A]['S']> => {
@@ -156,7 +160,7 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: 
     await responder(id, 'sign_in', eq.cirurgiao)
     await responder(id, 'sign_in', eq.circulante)
     await responder(id, 'sign_in', eq.enfermagem)
-    const confirmador = await pin(eq.circulante, eq.enfermagem)
+    const confirmador = await confirmacao(eq.circulante, eq.enfermagem, id, 'sign_in')
     return concluir(id, 'sign_in', eq.circulante, { leitorId: eq.circulante.id, confirmadorToken: confirmador })
   }
 
@@ -176,7 +180,7 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: 
     await com(id, eq.circulante, 'lente.time_out', { leitura: { modelo: plano?.modelo ?? 'LIO Teste Monofocal XY', dioptria: leituraDioptria ?? plano?.dioptria ?? 0, cilindro: null, eixo: null } })
     await responder(id, 'time_out', eq.circulante)
     await responder(id, 'time_out', eq.cirurgiao)
-    const confirmador = await pin(eq.circulante, eq.cirurgiao)
+    const confirmador = await confirmacao(eq.circulante, eq.cirurgiao, id, 'time_out')
     return concluir(id, 'time_out', eq.circulante, { leitorId: eq.circulante.id, confirmadorToken: confirmador })
   }
 
