@@ -90,6 +90,25 @@ Observação para o web-apoio: `ImpressaoBranco` só cai para `modelosPadrao()` 
 19. **Ordem (`depoisDe`)**: o item só habilita quando o pré-requisito já está REGISTRADO (e, se for sim/não, com "Sim"), como o servidor exige.
 20. **Hard stops que não se resolvem por texto** (ex.: quarentena, nome da mãe, conduta) mostram um atalho para onde se resolvem (`componentes/episodio/caminhoHardStop.ts`).
 
+## Fase 2 (revisões; modelos `pop-0.4/2`, `ator.confirmacao`)
+
+O agente api já tinha ajustado `TrocaPin` (modo `confirmador` → `ator.confirmacao`, token preso a episódio e bloco) e `Sala.tsx` (quem leu = quem está marcando). Por cima disso:
+
+1. **Hard stop `HS_LIO_TIME_OUT`**: rótulo curto "Divergência no Time Out" (cobre LIO e procedimento); o atalho leva à lente ("quarentena, se houver"); a parte escrita (procedimento) se resolve no próprio cartão do hard stop.
+2. **`exigidoQuando` entre modelos** (`'d7:C.olho_unico_qual'`): o renderizador procura a resposta no outro modelo (`contexto.respostasPorModelo` e `contexto.modelos`, passados pela visão), aceita item múltipla (basta um valor em comum) e só conta o valor de um item condicional quando a condição dele também vale (como no domínio). Texto: `Responder quando "…" (D-7: checklist da concierge) for Olho único`.
+3. **Itens condicionais inativos ficam recolhidos** ("Responder quando…" + "Responder mesmo assim"), para os registros por classe de medicamento (10 no D-2, 10 na admissão) não poluírem o tablet. Com a condição valendo, ou com resposta, o item aparece inteiro.
+4. **Identificação ativa** (`A.identificacao`, `B.identificacao_ativa`, agora `opcao`): a opção "confirmado com o acompanhante" só aparece com `d7:C.demencia = sim` (uma resposta já registrada continua visível). `exigeSim` em opção: "o bloco não é concluído com a resposta Não".
+5. **Observação obrigatória** (o servidor recusa sem ela): opção cujo rótulo pede observação ("Outro remédio (descrever na observação)", "Nenhum disponível (explicar na observação)", "Exceção…", "Reportados…") abre o campo marcado "(obrigatória)" e bloqueia o registro até preencher; correção de item crítico do D-7 já concluído (`ITENS_CRITICOS_D7` do domínio) também pede o motivo.
+6. **Medicamentos**: campos extras pelo `camposMedicamento` do modelo (com reserva pelos ids). Exigência dos extras só nos itens do D-7 (`D7.glp1`, `D7.insulina`, `D7.colirios`), como o servidor; nos registros atualizados do D-2/admissão os campos aparecem sem ser exigidos.
+7. **Time Out**: caixa "Ler em voz alta para TODO paciente, mesmo que negativo" com `verbalizacaoTimeOut` (alergias, inclusive a nova da admissão; α-bloqueador; anticoagulação), em destaque no bloco.
+8. **Alertas**: `comunicacaoPendente` (a comunicação anterior "não vale mais", com data, autor e via; botão de comunicar de novo), `condutaDesatualizada` (conduta antiga riscada e marcada DESATUALIZADA; o cirurgião escreve nova), alerta desativado por correção continua na lista com o botão de comunicar enquanto a comunicação estiver pendente; contadores "comunicações pendentes" e "alertas sem conduta válida". O início mostra os mesmos estados. O histórico inclui `hardStopsResolvidos`.
+9. **Sala**: quase-evento com `categoria` opcional (identidade, olho, LIO, outro); intercorrência com "never event" opcional (olho errado, paciente errado, LIO errada).
+10. **Materiais**: `materiais.previa.avisos` aparecem antes do envio ("Atenção antes de enviar"; ex.: TCLE retido até realinhar a expectativa).
+11. **Checkpoint 2 sem PIN** ([S] da API, conferência cega pela sessão): com ator por PIN, o formulário cego fica bloqueado com o motivo "faça com o login da própria conferente".
+12. **`Botao` com a prop `motivo`** (mesmo nula) mantém a mesma estrutura no DOM ao habilitar/desabilitar (antes o botão era recriado, perdendo o foco).
+
+Observação ao domínio: `validarMedicamento` só guarda `aplicacao`/`ultimaAplicacao`/início/náusea quando o item é `D7.glp1`; no registro atualizado `D2.med.glp1` / `A.med.glp1` esses campos são descartados (a tela os mostra porque o modelo traz `camposMedicamento: ['glp1']`). Ou o servidor guarda, ou o modelo não marca os campos nesses itens.
+
 ## Lacunas no contrato (para o orquestrador)
 
 1. **Chaves de `EpisodioVisao.permissoes` não estão no contrato.** O domínio (`projecao.ts`) usa `"<acao>"`, `"<acao>:<modelo>"` (checklist.responder, bloco.concluir) e `"hardstop.resolver:<codigo>"`; a tela procura `acao:alvo` e cai para `acao`. Sugestão: fixar essas formas no `contrato.ts`.
@@ -114,6 +133,9 @@ Rodada contra `dev/servidor.ts` (porta 8790, banco `jornada_dev_webclinico` recr
 - Sala, num tablet com login da enfermagem e troca por PIN: Admissão → Sign In (leitura em voz alta; leitor fora da lista do confirmador; confirmador por PIN) → Time Out (leitura cega da LIO da caixa: confere) → Sign Out → Anestesia → Alta; estado final "Alta"; avisos à família gerados em ensaio para admissão, início, fim e alta; "Avisar atraso" bloqueado com o motivo do servidor.
 
 ## Testes
+
+Fase 2: 75 testes em `web/src` (12 arquivos), 39 deste agente. Novos: `componentes/checklist/RegrasItem.test.tsx` (6: condição entre modelos encadeada, múltipla, opção "acompanhante", observação obrigatória, correção de item crítico) e `telas/episodio/paineis/PainelAlertas.test.tsx` (6: comunicação pendente, alerta desativado ainda a comunicar, desativado já comunicado, conduta desatualizada, verbalização do Time Out com e sem alergias).
+
 
 - `componentes/checklist/RenderizadorChecklist.test.tsx` (11): cada tipo de resposta (confirmação, sim/não, opção, múltipla, texto, data, hora, número, olho com "não sabe", medicamento com GLP-1, alergia com reação obrigatória, pessoa), olho por extenso, "não usa"/"sem alergia", ajuda/pendência do POP/autor/hora/fora de hora/correções, faltam em destaque, papéis e `depoisDe`, modo imediato, confirmação não desmarcável, somente leitura, `exigidoQuando`/`exigeSim`/`exigeBlocosConcluidos`/`foraDeHoraApos`.
 - `componentes/identificacao/CabecalhoIdentificacao.test.tsx` (8, inclui a faixa fixa ao rolar): dois identificadores, olho por extenso (nunca a sigla), dots com letra e nome acessível, variante sala, alertas por extenso, homônimo, nome parecido, nome da mãe, "NÃO CONFERIDO NO DATASIGH".

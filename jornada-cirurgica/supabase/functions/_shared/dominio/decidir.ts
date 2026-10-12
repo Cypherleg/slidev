@@ -397,13 +397,16 @@ function validarMedicamento(v: unknown, item: ItemModelo, hoje: string): ValorMe
   if (temTexto(m.detalhes)) r.detalhes = m.detalhes.trim()
   if (m.uso === 'nao') return r
   if (!r.nomes) erro('VALIDACAO', 'Informe o nome (comercial) do medicamento.', { itemId: item.id, campo: 'nomes' })
-  if (item.id === D7.insulina && m.uso === 'usa') {
+  // Os registros por classe do D-2 e da admissão herdam `camposMedicamento` do D-7 e seguem as mesmas exigências.
+  const ehInsulina = item.id === D7.insulina || Boolean(item.camposMedicamento?.includes('insulina'))
+  const ehGlp1 = item.id === D7.glp1 || Boolean(item.camposMedicamento?.includes('glp1'))
+  if (ehInsulina && m.uso === 'usa') {
     if (!r.detalhes) erro('VALIDACAO', 'Registrar tipo, dose e horário.', { itemId: item.id, campo: 'detalhes' })
     if (typeof m.insulinaOuSulfonilureia !== 'boolean') erro('VALIDACAO', 'Marque se é insulina ou sulfonilureia (dot D).', { itemId: item.id, campo: 'insulinaOuSulfonilureia' })
   }
   if (typeof m.insulinaOuSulfonilureia === 'boolean') r.insulinaOuSulfonilureia = m.insulinaOuSulfonilureia
   if (item.id === D7.colirios && m.uso === 'usa' && !r.detalhes) erro('VALIDACAO', 'Registrar nome e olho do colírio.', { itemId: item.id, campo: 'detalhes' })
-  if (item.id === D7.glp1) {
+  if (ehGlp1) {
     if (m.aplicacao !== undefined && m.aplicacao !== 'semanal' && m.aplicacao !== 'diaria') erro('VALIDACAO', 'Aplicação: semanal ou diária.', { itemId: item.id, campo: 'aplicacao' })
     if (m.ultimaAplicacao !== undefined && (!validarData(m.ultimaAplicacao) || m.ultimaAplicacao > hoje)) {
       erro('VALIDACAO', 'Data da última aplicação inválida.', { itemId: item.id, campo: 'ultimaAplicacao' })

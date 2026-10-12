@@ -124,17 +124,17 @@ Resultado dos testes e da verificação ponta a ponta: seção 8.
 | WhatsApp da concierge e escala do telefone fora do horário | Página do paciente, folha de alta | 4 |
 | NSP, observação do Time Out, canal de quase-eventos | Indicadores 2 e 4 | 5 |
 
-## 8. Resultado dos testes (12/10/2026, local, dados fictícios)
+## 8. Resultado dos testes (12/10/2026, local, dados fictícios, modelos `pop-0.4/2`)
 
 | Conjunto | Testes | O que cobre |
 | --- | --- | --- |
-| Domínio (`tests/dominio`) | 137 | Modelos v1, cada hard stop disparado e resolvido, conferência cega, jornada D-7 → alta, ordem e hora real, alertas, dots, pendências, indicadores, quiz, avisos em ensaio e bloqueio por intercorrência |
+| Domínio (`tests/dominio`) | 171 | Modelos v1, cada hard stop disparado e resolvido, conferência cega, jornada D-7 → alta, ordem e hora real, alertas, dots, pendências, indicadores, quiz, avisos em ensaio e bloqueio por intercorrência |
 | Banco (`tests/banco`) | 94 | Migrations do zero e reaplicadas, "só cresce" (inclusive como administrador), RLS por papel e visibilidade, matriz de permissões, sem acesso de `anon`/`authenticated`, fila sem entrega dupla |
-| API (`tests/api`) | 69 | Fluxo completo pela API, conferente varrendo todas as leituras sem achar os valores plantados, autora do checkpoint 1 recusada no 2, CPF nunca gravado nem logado, Datasigh só GET, limite de taxa, PIN, conflito de versão, CORS |
-| Interface (`web/src`) | 63 | Renderizador de checklist, identificação (olho por extenso, dots com letra), formulário cego, página do paciente sem o olho, quiz, impressão, gestão |
+| API (`tests/api`) | 93 | Fluxo completo pela API, conferente varrendo todas as leituras sem achar os valores plantados, autora do checkpoint 1 recusada no 2, CPF nunca gravado nem logado, Datasigh só GET, limite de taxa, PIN, conflito de versão, CORS |
+| Interface (`web/src`) | 75 | Renderizador de checklist, identificação (olho por extenso, dots com letra), formulário cego, página do paciente sem o olho, quiz, impressão, gestão |
 | Ponta a ponta no navegador (`tests/e2e`, tablet) | 5 | Lista do dia, conferência cega com quarentena, sala, página do paciente, checklist em branco sem sessão |
 
-Total: 368 testes, todos passando. Verificação de tipos e build da interface sem erros.
+Total: 438 testes (433 + 5 no navegador), todos passando, depois das correções das duas revisões independentes. Verificação de tipos e build da interface sem erros.
 
 Não testado aqui: Deno real (as Edge Functions foram verificadas com tipos simulados), Postgres 17 e o usuário da `SUPABASE_DB_URL` do Supabase, Datasigh real, Meta real.
 

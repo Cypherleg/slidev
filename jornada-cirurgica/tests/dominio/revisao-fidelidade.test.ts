@@ -180,6 +180,30 @@ describe('1. remédio que muda depois do D-7', () => {
   })
 })
 
+describe('1b. registro por classe do D-2 e da admissão guarda os campos do GLP-1', () => {
+  it('GLP-1 iniciado depois do D-7 e informado no D-2: dados guardados e janela recalculada', () => {
+    const sim = new Simulador()
+    const novo: ValorResposta = { uso: 'usa', nomes: 'Caneta Teste', detalhes: '0,5 mg', aplicacao: 'semanal', ultimaAplicacao: '2026-10-16', inicioOuAumentoUltimos3Meses: true, nauseaOuVomito: false }
+    ateD2Com(sim, {}, { [D2.mudancaMedicacao]: 'sim', [D2.mudancaClasses]: ['glp1'], [medicamentoD2('glp1')]: novo })
+    const r = sim.visao('gestora', true).respostas.d2?.[medicamentoD2('glp1')]?.valor as unknown as Record<string, unknown>
+    expect(r).toMatchObject({ aplicacao: 'semanal', ultimaAplicacao: '2026-10-16', inicioOuAumentoUltimos3Meses: true })
+    // 16/10 → 20/10: menos de 7 dias; o prazo de suspensão não cabe (POP §1.B).
+    expect(alerta(sim, `d7:${D7.glp1}.prazo`)).toBeDefined()
+  })
+
+  it('registro de GLP-1 em uso no D-2 exige os mesmos campos do D-7', () => {
+    const sim = new Simulador()
+    ateD2Com(sim, {})
+    expect(() =>
+      sim.executar('conferente', {
+        tipo: 'checklist.responder',
+        modelo: 'd2',
+        respostas: [{ itemId: medicamentoD2('glp1'), valor: { uso: 'usa', nomes: 'Caneta Teste' } }],
+      }),
+    ).toThrow(/dose|aplica/i)
+  })
+})
+
 describe('2. corrigir resposta não apaga alerta em silêncio', () => {
   it('alerta gerado e corrigido antes de comunicar continua exigindo comunicação ("resposta corrigida")', () => {
     const sim = new Simulador()
