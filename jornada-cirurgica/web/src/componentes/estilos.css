@@ -43,7 +43,19 @@
 .bloqueio-tela .cartao { max-width: 640px; width: 100%; }
 
 /* ---------- Identificação ---------- */
-.cabecalho-id { position: sticky; top: var(--altura-ator, 0px); z-index: 30; background: var(--superficie); border: 3px solid var(--marinho); border-radius: var(--raio); padding: 12px 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, .1); }
+.cabecalho-id { background: var(--superficie); border: 3px solid var(--marinho); border-radius: var(--raio); padding: 12px 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, .1); }
+.cabecalho-id-grade { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: start; }
+.cabecalho-id-olho { text-align: right; }
+.cabecalho-id.sala .cabecalho-id-grade { grid-template-columns: 1fr; }
+.cabecalho-id.sala .cabecalho-id-olho { text-align: left; }
+@media (max-width: 640px) { .cabecalho-id-grade { grid-template-columns: 1fr; } .cabecalho-id-olho { text-align: left; } }
+.acoes-cabecalho { justify-content: flex-end; }
+/* Faixa fixa de identificação: aparece quando o cabeçalho completo sai da tela. */
+.faixa-id-fixa { position: fixed; top: var(--altura-ator, 0px); left: 0; right: 0; z-index: 35; background: var(--marinho); color: #fff; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; padding: 6px 16px; box-shadow: 0 3px 10px rgba(0, 0, 0, .3); font-weight: 600; }
+.faixa-id-nome { font-size: 1.15rem; font-weight: 800; }
+.faixa-id-olho { background: #fff; color: var(--marinho); font-weight: 800; padding: 2px 10px; border-radius: 6px; letter-spacing: .04em; }
+.faixa-id-alerta { background: var(--perigo-fundo); color: var(--perigo); border: 2px solid var(--perigo); border-radius: 6px; padding: 0 8px; font-weight: 800; font-size: .85rem; text-transform: uppercase; }
+.faixa-id-fixa .dot { width: 28px; height: 28px; font-size: .9rem; border-color: #fff; }
 .cabecalho-id .nome { font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--texto); }
 .cabecalho-id.sala .nome { font-size: 2.1rem; }
 .cabecalho-id .linha-id { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
@@ -155,7 +167,7 @@
 
 @media print {
   .faixa-ator, .faixa-ambiente, .casca-topo, .painel-notificacoes, .abas { display: none !important; }
-  .cabecalho-id { position: static; box-shadow: none; }
+  .cabecalho-id { box-shadow: none; }
 }
 
 /* Entradas soltas (fora de .campo) */
@@ -163,3 +175,5 @@
 textarea.entrada { min-height: 72px; }
 .entrada:disabled, .campo input:disabled, .campo textarea:disabled, .campo select:disabled { background: #eef0f3; color: var(--texto-suave); }
 .item-checklist.condicional-inativo { opacity: .8; border-style: dashed; }
+/* Âncoras não ficam escondidas sob o aviso do PIN e a faixa de identificação. */
+.cartao, .secao-checklist, .item-checklist, .quarentena, section { scroll-margin-top: 140px; }

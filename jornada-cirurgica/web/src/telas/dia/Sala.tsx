@@ -10,6 +10,7 @@ import type { ModeloId, Papel } from '@dominio/tipos.ts'
 import { chamar } from '../../api/cliente.ts'
 import { useSessao } from '../../app/sessao.tsx'
 import { Aviso, Botao, Campo, Carregando, Cartao, EscolhaUnica, Selo } from '../../componentes/base/index.tsx'
+import { CAMINHO_HARD_STOP } from '../../componentes/episodio/caminhoHardStop.ts'
 import { ListaHardStops } from '../../componentes/episodio/ListaHardStops.tsx'
 import { ConclusaoBloco, SeloSituacao } from '../../componentes/episodio/SituacaoBloco.tsx'
 import { formatarDataHora, formatarHora } from '../../componentes/formato.ts'
@@ -79,6 +80,14 @@ export default function Sala() {
         hardStops={visao.hardStops}
         papeisAtor={sessao.papeis}
         permissaoPara={codigo => permissaoDoServidor(visao, 'hardstop.resolver', codigo)}
+        caminhoPara={h => {
+          const c = CAMINHO_HARD_STOP[h.codigo]
+          return c ? (
+            <Link className="botao secundario pequeno" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }} to={`${ROTAS.episodio(visao.episodio.id, c.aba)}${c.ancora ? `&ir=${c.ancora}` : ''}`}>
+              {c.rotulo}
+            </Link>
+          ) : null
+        }}
         aoResolver={(codigo, resolucao) => ctl.executar('hardstop.resolver', { codigo, resolucao }, 'Resolução registrada')}
       />
       <nav aria-label="Blocos do dia da cirurgia" className="blocos-sala">
@@ -87,7 +96,7 @@ export default function Sala() {
           if (!b) return null
           return (
             <button key={m} type="button" className={`botao-bloco ${b.situacao}`} aria-current={atual === m ? 'step' : undefined} onClick={() => setEscolhido(m)}>
-              <strong>{visao.modelos[m]?.titulo ?? ROTULO_MODELO[m]}</strong>
+              <strong>{ROTULO_MODELO[m]}</strong>
               <SeloSituacao bloco={b} />
               {b.concluido && <span className="suave">{formatarHora(b.concluido.em)}</span>}
             </button>
@@ -193,8 +202,8 @@ function LeituraEmVozAlta(props: PropsPainel & { modelo: ModeloId }) {
   const perm = permissaoConcluir(visao, papeis, m)
   const motivos: string[] = []
   if (!perm.permitido) motivos.push(perm.motivo ?? 'Sem permissão para concluir.')
-  if (b.faltam.length) motivos.push(`Faltam ${b.faltam.length} ${b.faltam.length === 1 ? 'item' : 'itens'} do checklist.`)
-  for (const i of b.impedimentos) motivos.push(i)
+  if (b.faltam.length && !b.impedimentos.some(i => /sem resposta/i.test(i))) motivos.push(`Faltam ${b.faltam.length} ${b.faltam.length === 1 ? 'item' : 'itens'} do checklist.`)
+  for (const i of b.impedimentos) if (!motivos.includes(i)) motivos.push(i)
   if (!leitorId) motivos.push('Escolha quem leu em voz alta.')
   if (!confirmador) motivos.push('Quem confirmou entra com o PIN.')
   const encerrado = motivoEncerrado(visao)
@@ -204,7 +213,7 @@ function LeituraEmVozAlta(props: PropsPainel & { modelo: ModeloId }) {
   return (
     <section className="leitura-voz-alta pilha" aria-labelledby={`voz-${modelo}`}>
       <h3 id={`voz-${modelo}`} style={{ margin: 0 }}>
-        Leitura em voz alta: concluir {m.titulo}
+        Leitura em voz alta: concluir {ROTULO_MODELO[modelo]}
       </h3>
       <p className="instrucao" style={{ margin: 0 }}>
         Leia em voz alta DA CAIXA DA LENTE, DA BIOMETRIA ORIGINAL E DA PULSEIRA, não da tela. O paciente diz nome completo, data de nascimento e olho.
@@ -267,7 +276,7 @@ function LeituraEmVozAlta(props: PropsPainel & { modelo: ModeloId }) {
             if (ok) setConfirmador(null)
           }}
         >
-          Concluir {m.titulo}
+          Concluir {ROTULO_MODELO[modelo]}
         </Botao>
       </div>
       {motivos.length > 0 && (

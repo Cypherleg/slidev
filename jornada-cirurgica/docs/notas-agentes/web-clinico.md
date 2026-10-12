@@ -38,7 +38,9 @@ Variável opcional da interface: `VITE_INATIVIDADE_MIN` (minutos sem toque até 
 | `/meu-pin` | `app/App.tsx` (`MeuPin`) + `componentes/pin/DefinirPin.tsx` | O usuário do login define ou troca o próprio PIN (`membro.definir_pin`, sem ator). |
 
 As telas do agente web-apoio são importadas sob demanda (`React.lazy`) pelos caminhos combinados.
-A página do paciente (`/p/:token`) fica fora da casca e sem sessão.
+A página do paciente (`/p/:token`) fica fora da casca e sem sessão (nem o provedor de sessão é montado).
+Os checklists em branco (`/impressao/branco/:modelo`) ficam fora da casca e **fora do `ExigeSessao`** (contingência em papel, regra 12; pedido do orquestrador): abrem com a sessão expirada ou o servidor fora. O registro preenchido (`/impressao/episodio/:id`) continua exigindo sessão.
+Observação para o web-apoio: `ImpressaoBranco` só cai para `modelosPadrao()` quando o erro é `indisponivel`; sem sessão, `chamar` lança `nao_autenticado` antes de chegar ao servidor, e a tela mostra erro em vez do modelo embutido. Sugestão: tratar `nao_autenticado` e `mfa_exigido` como `indisponivel` nessa tela.
 
 ## Casca (`app/`)
 

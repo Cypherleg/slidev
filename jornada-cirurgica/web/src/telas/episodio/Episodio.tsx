@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import type { Papel } from '@dominio/tipos.ts'
 import { useSessao } from '../../app/sessao.tsx'
 import { Aviso, Botao, Carregando } from '../../componentes/base/index.tsx'
+import { CAMINHO_HARD_STOP } from '../../componentes/episodio/caminhoHardStop.ts'
 import { ListaHardStops } from '../../componentes/episodio/ListaHardStops.tsx'
 import { CabecalhoIdentificacao } from '../../componentes/identificacao/CabecalhoIdentificacao.tsx'
 import { permissaoDoServidor } from '../../componentes/permissoes.ts'
@@ -123,6 +124,14 @@ export default function Episodio() {
         hardStops={visao.hardStops}
         papeisAtor={papeis}
         permissaoPara={codigo => permissaoDoServidor(visao, 'hardstop.resolver', codigo)}
+        caminhoPara={h => {
+          const c = CAMINHO_HARD_STOP[h.codigo]
+          return c ? (
+            <button type="button" className="botao secundario pequeno" onClick={() => mudarAba(c.aba, c.ancora)}>
+              {c.rotulo}
+            </button>
+          ) : null
+        }}
         aoResolver={(codigo, resolucao) => ctl.executar('hardstop.resolver', { codigo, resolucao }, 'Resolução registrada')}
       />
       <PainelPendencias pendencias={visao.pendencias} aoIr={d => mudarAba(d.aba, d.ancora)} />

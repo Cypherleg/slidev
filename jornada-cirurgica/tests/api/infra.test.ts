@@ -357,6 +357,8 @@ describe('handler HTTP (sem banco)', () => {
     expect((await h(new Request('http://localhost/functions/v1/jornada-cirurgica', { method: 'POST', body: '{}', headers: { 'Content-Type': 'text/plain' } }))).status).toBe(415)
     const inval = await h(post('/functions/v1/jornada-cirurgica', '{x', { Authorization: tok }))
     expect(inval.status).toBe(400)
+    const latin1 = await h(new Request('http://localhost/functions/v1/jornada-cirurgica', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: new Uint8Array([0x7b, 0xff, 0x7d]) }))
+    expect(latin1.status).toBe(400)
     const desconhecida = await h(post('/functions/v1/jornada-cirurgica', { acao: '__proto__', dados: {} }, { Authorization: tok }))
     expect(desconhecida.status).toBe(404)
     const grande = await h(post('/functions/v1/jornada-cirurgica', { acao: 'sessao', dados: { x: 'a'.repeat(300_000) } }, { Authorization: tok }))

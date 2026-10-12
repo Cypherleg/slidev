@@ -217,6 +217,8 @@ export async function criarAmbiente(
   })
   await semearMembros(banco, config)
   if (!opcoes.semModelos && dominioPronto) await semearModelos(banco)
+  await banco.sql`insert into jornada_cirurgica.materiais (codigo, versao, titulo, tipo, url, momento, publico, ativo)
+    values ('video_preparo', 1, 'Video de preparo (exemplo)', 'video', 'https://exemplo.invalid/video-preparo', 'd7', 'paciente', true)`
 
   const token = (usuario: Pick<UsuarioTeste, 'id' | 'email'>, aal: 'aal1' | 'aal2' = 'aal2') => emitirTokenDev(SEGREDO_DEV, { id: usuario.id, email: usuario.email, aal })
 

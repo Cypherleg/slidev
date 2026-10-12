@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AcaoEquipe, AcoesEquipe } from '@contrato'
 import type { EpisodioVisao } from '@dominio/tipos.ts'
+import { ouvirAtor } from '../../api/ator.ts'
 import { chamar, ErroChamada } from '../../api/cliente.ts'
 import { useTratarErro } from '../../app/erros.tsx'
 import { useNotificacoes } from '../../app/notificacoes.tsx'
@@ -62,6 +63,20 @@ export function useEpisodio(id: string | undefined): ControleEpisodio {
     ref.current = null
     void recarregarRef.current()
   }, [id])
+
+  // Troca de quem marca (PIN): a visão é filtrada pelo papel do ator (conferência cega, permissões),
+  // então é descartada e recarregada. Os rascunhos da pessoa anterior também somem (a tela é desmontada),
+  // para nada ser registrado em nome de quem não digitou.
+  useEffect(
+    () =>
+      ouvirAtor(() => {
+        setCarregando(true)
+        setVisao(null)
+        ref.current = null
+        void recarregarRef.current()
+      }),
+    [],
+  )
 
   const executar = useCallback(
     async <A extends AcaoComVersao>(acao: A, dados: DadosSemVersao<A>, mensagemOk?: string): Promise<boolean> => {

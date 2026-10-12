@@ -70,6 +70,7 @@ export function modeloD7(): ModeloChecklist {
               'Registrar tipo, dose e horário; marcar se insulina ou sulfonilureia (dot D). A concierge não altera dose. Regra do serviço (informação, POP §5): insulina não é aplicada na manhã da cirurgia e volta quando o paciente se alimentar. ' +
               NUNCA_SUSPENDER,
             pendente: 'Exceções em aberto (POP §14): insulina basal em DM1/bomba, sulfonilureia/glinida, SGLT2.',
+            camposMedicamento: ['insulina'],
           }),
           item(D7.glp1, 'Análogo de GLP-1 ou tirzepatida (caneta para diabetes ou para emagrecer)', 'medicamento', C, 'POP §1.B e §5', {
             ajuda:
@@ -77,6 +78,7 @@ export function modeloD7(): ModeloChecklist {
               NUNCA_SUSPENDER,
             alerta: { descricao: 'Usa ou já usou → ALERTA. Prazo de suspensão que não cabe até a cirurgia → ALERTA específico (avisar o cirurgião no mesmo dia).', nivel: 'alerta' },
             pendente: 'Conduta quando o GLP-1 já foi aplicado dentro do prazo: em aberto (POP §14).',
+            camposMedicamento: ['glp1'],
           }),
           item(D7.antiHipertensivos, 'Anti-hipertensivos', 'medicamento', C, 'POP §1.B', {
             ajuda: 'Registrar. Uso no dia D: conforme médico. ' + NUNCA_SUSPENDER,

@@ -118,3 +118,31 @@ export function abrirEpisodio(
     avisos,
   }
 }
+
+/**
+ * Evento de correção do cadastro do paciente (correção é novo evento, nunca edição).
+ * Campo corrigível: nome completo, data de nascimento, nome da mãe, prontuário. Motivo obrigatório.
+ */
+export function corrigirPaciente(
+  entrada: {
+    paciente: Paciente
+    campo: 'nomeCompleto' | 'dataNascimento' | 'nomeMae' | 'prontuario'
+    valor: string | null
+    motivo: string
+  },
+  ctx: ContextoDecisao,
+): NovoEvento {
+  const p = papelUsado(ctx.ator.papeis, papeisPermitidosParaEvento('paciente.corrigido'))
+  if (!p) throw new ErroDominio('SEM_PERMISSAO', 'Papel sem permissão para corrigir o cadastro do paciente.')
+  if (!entrada.paciente?.id) erro('Paciente não informado.', { campo: 'paciente' })
+  if (!['nomeCompleto', 'dataNascimento', 'nomeMae', 'prontuario'].includes(entrada.campo)) erro('Campo não corrigível.', { campo: 'campo' })
+  if (!temTexto(entrada.motivo)) erro('Motivo da correção obrigatório.', { campo: 'motivo' })
+  const valor: string | null = temTexto(entrada.valor) ? entrada.valor.trim().replace(/\s+/g, ' ') : null
+  if (entrada.campo === 'nomeCompleto' && (!valor || valor.split(' ').length < 2)) erro('Nome completo (conforme documento com foto).', { campo: 'valor' })
+  if (entrada.campo === 'dataNascimento' && (!valor || !validarData(valor) || valor > dataLocal(ctx.agora))) erro('Data de nascimento inválida.', { campo: 'valor' })
+  const anterior = entrada.paciente[entrada.campo] ?? null
+  if (anterior === valor) erro('O valor não mudou.', { campo: 'valor' })
+  const dados: Record<string, unknown> = { campo: entrada.campo, valorAnterior: anterior, valor, motivo: entrada.motivo.trim() }
+  if (entrada.campo === 'nomeCompleto') dados.nomeNormalizado = normalizarNome(valor!)
+  return { episodioId: null, pacienteId: entrada.paciente.id, tipo: 'paciente.corrigido', dados, ...base(ctx, p) }
+}

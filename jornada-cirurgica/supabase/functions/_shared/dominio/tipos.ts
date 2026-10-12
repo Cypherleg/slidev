@@ -155,6 +155,8 @@ export interface ItemModelo {
   exigeBlocosConcluidos?: ModeloId[]
   /** Hora real (regra 5): a resposta é sinalizada fora de hora se este bloco já estiver concluído. */
   foraDeHoraApos?: ModeloId
+  /** Tipo 'medicamento': campos extras a exibir (GLP-1: aplicação, última aplicação, início/aumento, náusea; insulina: dot D). */
+  camposMedicamento?: ('glp1' | 'insulina')[]
 }
 
 /** Condição de obrigatoriedade de um item. */
@@ -614,6 +616,8 @@ export interface EpisodioVisao {
   teachBack: { resultado: 'adequado_primeira' | 'apos_reorientacao' | 'inadequado'; observacao?: string; em: string; porNome: string } | null
   /** Ações que o ator atual pode executar agora, com o motivo quando não pode. */
   permissoes: Record<string, { permitido: boolean; motivo?: string }>
+  /** Acréscimo opcional (agente domínio): resoluções escritas de hard stops (hardstop.resolver), para o registro impresso. */
+  hardStopsResolvidos?: { codigo: CodigoHardStop; titulo: string; resolucao: string; porNome: string; em: string }[]
 }
 
 /** Linha da lista do dia (sem valores de lente). */

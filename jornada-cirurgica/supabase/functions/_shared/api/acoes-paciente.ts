@@ -4,11 +4,15 @@
 
 import {
   corrigirQuiz,
+  eventoMaterialAberto,
+  eventoQuizRespondido,
   montarEstado,
   perguntasQuiz,
-  primeiroNome,
   projetarVisao,
+  proximaAcaoQuiz,
+  questoesErradas,
   resumoDia,
+  situacaoPaginaPaciente,
   type Ator,
   type EntradaEstado,
   type EpisodioVisao,
@@ -26,6 +30,7 @@ import {
   comoSistema,
   inserirEventos,
   materiaisPorIds,
+  S,
   travarEpisodio,
 } from './repositorio.ts'
 import type { DepsApi } from './servico.ts'
@@ -69,9 +74,9 @@ async function carregar(tx: Executor, ctx: ContextoPaciente): Promise<Carga> {
   return { entrada, visao }
 }
 
-/** Grava um evento do paciente (como jornada_sistema) e atualiza a projeção. */
-async function gravarEventoPaciente(tx: Executor, ctx: ContextoPaciente, entrada: EntradaEstado, tipo: NovoEvento['tipo'], dados: Record<string, unknown>): Promise<EntradaEstado> {
-  const ev: NovoEvento = {
+/** Evento da página (sem pessoa): autor = ATOR_SISTEMA_ID, papel 'paciente'. */
+function eventoPagina(entrada: EntradaEstado, tipo: NovoEvento['tipo'], dados: Record<string, unknown>): NovoEvento {
+  return {
     episodioId: entrada.episodio.id,
     pacienteId: entrada.paciente.id,
     tipo,
@@ -83,8 +88,13 @@ async function gravarEventoPaciente(tx: Executor, ctx: ContextoPaciente, entrada
     aparelhoId: null,
     foraDeHora: false,
   }
+}
+
+/** Grava um evento do paciente (como jornada_sistema) e atualiza a projeção (versao/resumo). */
+async function gravarEventoPaciente(tx: Executor, ctx: ContextoPaciente, entrada: EntradaEstado, ev: NovoEvento): Promise<EntradaEstado> {
+  const evento: NovoEvento = { ...ev, episodioId: entrada.episodio.id, pacienteId: entrada.paciente.id, autorId: ATOR_SISTEMA_ID, autorPapel: 'paciente', sessaoUsuarioId: null, aparelhoId: null }
   await comoSistema(tx)
-  const eventos = await inserirEventos(tx, [ev], entrada.episodio.versao + 1)
+  const eventos = await inserirEventos(tx, [evento], entrada.episodio.versao + 1)
   const nova: EntradaEstado = { ...entrada, episodio: { ...entrada.episodio, versao: entrada.episodio.versao + eventos.length }, eventos: [...entrada.eventos, ...eventos] }
   const estado = montarEstado(nova)
   // jornada_sistema só atualiza versao/resumo: eventos do paciente não mudam o estado do episódio.
@@ -92,35 +102,33 @@ async function gravarEventoPaciente(tx: Executor, ctx: ContextoPaciente, entrada
   return nova
 }
 
-function aprovou(visao: EpisodioVisao): boolean {
-  return visao.materiais.quiz.some(t => t.aprovado)
-}
-
-function podeResponder(visao: EpisodioVisao): boolean {
-  const contato = visao.materiais.contatoHumano?.motivo
-  return !aprovou(visao) && visao.materiais.quiz.length < 2 && contato !== 'reprovacao_dupla' && contato !== 'erro_olho'
-}
-
 export const acoesPaciente: Impl = {
   async 'pagina.obter'(ctx) {
     return ctx.deps.db.transacao(async tx => {
       let { entrada, visao } = await carregar(tx, ctx)
       if (!visao.materiais.abertoEm) {
-        entrada = await gravarEventoPaciente(tx, ctx, entrada, 'material.aberto', { origem: 'pagina', linkId: ctx.link.id })
+        entrada = await gravarEventoPaciente(tx, ctx, entrada, eventoPagina(entrada, 'material.aberto', { origem: 'pagina', linkId: ctx.link.id }))
         visao = projetarVisao(montarEstado(entrada), LEITOR_SISTEMA, ctx.agora.toISOString())
       }
+      // Auditoria de cada abertura da página (sem pessoa; sem dado de paciente no detalhe).
+      await comoSistema(tx)
+      await tx.consulta(`insert into ${S}.acessos (ator_id, recurso, episodio_id, paciente_id, detalhe) values ($1::uuid, 'pagina_paciente', $2::uuid, $3::uuid, $4::jsonb)`, [
+        ATOR_SISTEMA_ID,
+        entrada.episodio.id,
+        entrada.paciente.id,
+        { linkId: ctx.link.id },
+      ])
       const ids = [...new Set(visao.materiais.enviados.map(m => m.materialId))]
       const catalogo = await materiaisPorIds(tx, ids)
-      const tentativas = visao.materiais.quiz
-      const ultima = tentativas[tentativas.length - 1]
+      const s = situacaoPaginaPaciente(montarEstado(entrada))
       return {
-        primeiroNome: primeiroNome(entrada.paciente.nomeCompleto),
+        primeiroNome: s.primeiroNome,
         materiais: catalogo.map(m => ({ id: m.id, titulo: m.titulo, tipo: m.tipo, url: m.url, conteudo: m.conteudo })),
-        tcleLink: visao.tcle.link ?? null,
+        tcleLink: s.tcleLink,
         quiz: perguntasQuiz(),
-        tentativas: tentativas.length,
-        podeResponder: podeResponder(visao),
-        ultimaTentativa: ultima ? { aprovado: ultima.aprovado, em: ultima.em } : null,
+        tentativas: s.tentativas,
+        podeResponder: s.podeResponder,
+        ultimaTentativa: s.ultimaTentativa,
         telefones: entrada.config.telefones,
       }
     })
@@ -132,7 +140,7 @@ export const acoesPaciente: Impl = {
       const { entrada, visao } = await carregar(tx, ctx)
       const enviado = visao.materiais.enviados.find(m => m.materialId === materialId)
       if (!enviado) throw erro('nao_encontrado')
-      await gravarEventoPaciente(tx, ctx, entrada, 'material.aberto', { origem: 'material', materialId, versao: enviado.versao, linkId: ctx.link.id })
+      await gravarEventoPaciente(tx, ctx, entrada, eventoMaterialAberto({ episodioId: entrada.episodio.id, pacienteId: entrada.paciente.id, autorId: ATOR_SISTEMA_ID, materialId }))
     })
     return { ok: true }
   },
@@ -152,11 +160,16 @@ export const acoesPaciente: Impl = {
     }
     return ctx.deps.db.transacao(async tx => {
       const { entrada, visao } = await carregar(tx, ctx)
-      if (!podeResponder(visao)) throw erro('validacao', 'O questionário não está disponível. A equipe entrará em contato.')
-      const tentativa = { ...corrigirQuiz(respostas, entrada.episodio.olho, quemInstila), em: ctx.agora.toISOString() }
-      const nova = await gravarEventoPaciente(tx, ctx, entrada, 'quiz.respondido', { tentativa, respostas, linkId: ctx.link.id })
-      const depois = projetarVisao(montarEstado(nova), LEITOR_SISTEMA, ctx.agora.toISOString())
-      const proximaAcao = tentativa.aprovado ? 'concluido' : podeResponder(depois) ? 'rever_video_e_tentar_de_novo' : 'aguardar_contato_da_equipe'
+      if (!situacaoPaginaPaciente(montarEstado(entrada)).podeResponder) throw erro('validacao', 'O questionário não está disponível. A equipe entrará em contato.')
+      const olho = entrada.episodio.olho
+      const tentativa = { ...corrigirQuiz(respostas, olho, quemInstila), em: ctx.agora.toISOString() }
+      await gravarEventoPaciente(
+        tx,
+        ctx,
+        entrada,
+        eventoQuizRespondido({ episodioId: entrada.episodio.id, pacienteId: entrada.paciente.id, autorId: ATOR_SISTEMA_ID, tentativa, erradas: questoesErradas(respostas, olho) }),
+      )
+      const proximaAcao = proximaAcaoQuiz([...visao.materiais.quiz, tentativa]) ?? 'rever_video_e_tentar_de_novo'
       return { aprovado: tentativa.aprovado, proximaAcao }
     })
   },

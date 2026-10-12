@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { visaoFicticia } from '../teste/fixtures.ts'
 import { CabecalhoIdentificacao } from './CabecalhoIdentificacao.tsx'
 
@@ -65,5 +65,32 @@ describe('CabecalhoIdentificacao', () => {
     render(<CabecalhoIdentificacao visao={v} />)
     expect(screen.getByText('Mãe Fictícia da Silva')).toBeTruthy()
     expect(screen.getByText('CONFERIR NOME DA MÃE (3º IDENTIFICADOR)')).toBeTruthy()
+  })
+
+  describe('faixa fixa ao rolar', () => {
+    afterEach(() => vi.unstubAllGlobals())
+    it('quando o cabeçalho sai da tela, a faixa mostra nome, nascimento, prontuário, OLHO, dots e alertas', () => {
+      class ObservadorFora {
+        constructor(private cb: (e: { isIntersecting: boolean; boundingClientRect: { top: number } }[]) => void) {}
+        observe() {
+          this.cb([{ isIntersecting: false, boundingClientRect: { top: -400 } }])
+        }
+        disconnect() {}
+      }
+      vi.stubGlobal('IntersectionObserver', ObservadorFora)
+      const v = visaoFicticia({ identificacao: { homonimoNoDia: false, nomesParecidos: [], exigeNomeMae: false, segundoOlho: null, alertasExtenso: ['OLHO ÚNICO'] } })
+      render(<CabecalhoIdentificacao visao={v} />)
+      const faixa = screen.getByTestId('faixa-identificacao')
+      expect(faixa.textContent).toContain('Paciente Teste Alfa da Silva')
+      expect(faixa.textContent).toContain('15/03/1950')
+      expect(faixa.textContent).toContain('PRT-0001')
+      expect(faixa.textContent).toContain('OLHO ESQUERDO')
+      expect(faixa.textContent).toContain('OLHO ÚNICO')
+      expect(within(faixa).getByText('A')).toBeTruthy()
+    })
+    it('sem rolagem não há faixa', () => {
+      render(<CabecalhoIdentificacao visao={visaoFicticia()} />)
+      expect(screen.queryByTestId('faixa-identificacao')).toBeNull()
+    })
   })
 })

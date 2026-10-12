@@ -30,6 +30,8 @@ const ORDEM_SEVERIDADE: Record<SeveridadePendencia, number> = { hard_stop: 0, al
 
 export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia[] {
   const ep = est.entrada.episodio
+  const t = (iso: string) => Date.parse(iso)
+  const tAgora = t(agora)
   const r: Pendencia[] = []
   const add = (codigo: string, descricao: string, responsavel: Papel[], desde: string, severidade: SeveridadePendencia, extra: { prazo?: string; local?: string } = {}) =>
     r.push({ id: `${ep.id}:${codigo}`, episodioId: ep.id, codigo, descricao, responsavel, desde, severidade, ...extra })
@@ -101,9 +103,9 @@ export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia
   if (rank(est) < RANK.admitido && est.tcle.status !== 'assinado' && est.tcle.status !== 'olho_conferido') {
     const desde = est.tcle.historico[0]?.em ?? ep.abertoEm
     const prazo = data ? fimDoDiaLocal(somarDias(data, -2)) : undefined
-    const atrasado = !!prazo && agora > prazo
+    const atrasado = !!prazo && tAgora > t(prazo)
     add('tcle.nao_assinado', 'TCLE não assinado (prazo-alvo: até D-2).', ['concierge'], desde, atrasado ? 'alerta' : 'pendencia', { ...(prazo ? { prazo } : {}), local: 'tcle' })
-    if (data && agora >= inicioDoDiaLocal(somarDias(data, -3)) && est.tcle.status === 'enviado') {
+    if (data && tAgora >= t(inicioDoDiaLocal(somarDias(data, -3))) && est.tcle.status === 'enviado') {
       add('tcle.lembrete_d3', 'D-3 sem assinatura: enviar o lembrete do TCLE (texto aprovado) ou oferecer a assinatura no hospital.', ['concierge'], inicioDoDiaLocal(somarDias(data, -3)), 'alerta', { local: 'tcle' })
     }
   }
@@ -111,8 +113,8 @@ export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia
   // Link não aberto até D-3 → ligação ativa (POP §6)
   if (data && rank(est) < RANK.admitido && est.materiais.enviados.length && !est.materiais.abertoEm) {
     const d3 = inicioDoDiaLocal(somarDias(data, -3))
-    const ligou = est.teachBacks.some((t) => t.em >= d3)
-    if (agora >= d3 && !ligou) {
+    const ligou = est.teachBacks.some((x) => t(x.em) >= t(d3))
+    if (tAgora >= t(d3) && !ligou) {
       add('materiais.link_nao_aberto_d3', 'Link não aberto até D-3: ligação ativa; vídeo exibido na recepção no D-2 ou D0, antes da assinatura.', ['concierge'], d3, 'alerta', { local: 'materiais' })
     }
   }
@@ -157,8 +159,9 @@ export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia
   if (data && rank(est) < RANK.d2_concluido) {
     const d2 = inicioDoDiaLocal(somarDias(data, -2))
     const vespera = inicioDoDiaLocal(somarDias(data, -1))
-    if (agora >= d2) {
-      add('d2.nao_concluido', agora >= vespera ? 'D-2 não concluído na véspera da cirurgia.' : 'D-2 não concluído.', ['conferente', 'concierge'], d2, agora >= vespera ? 'alerta' : 'pendencia', {
+    if (tAgora >= t(d2)) {
+      const naVespera = tAgora >= t(vespera)
+      add('d2.nao_concluido', naVespera ? 'D-2 não concluído na véspera da cirurgia.' : 'D-2 não concluído.', ['conferente', 'concierge'], d2, naVespera ? 'alerta' : 'pendencia', {
         prazo: vespera,
         local: 'd2',
       })
@@ -183,7 +186,7 @@ export function pendenciasDoEstado(est: EstadoInterno, agora: string): Pendencia
     }
   }
 
-  return r.sort((a, b) => ORDEM_SEVERIDADE[a.severidade] - ORDEM_SEVERIDADE[b.severidade] || a.desde.localeCompare(b.desde) || a.id.localeCompare(b.id))
+  return r.sort((a, b) => ORDEM_SEVERIDADE[a.severidade] - ORDEM_SEVERIDADE[b.severidade] || t(a.desde) - t(b.desde) || a.id.localeCompare(b.id))
 }
 
 /** Contato humano pelo quiz (POP §6): reprovação dupla ou erro na pergunta 1, até um teach-back posterior. */
@@ -195,6 +198,6 @@ export function contatoHumanoQuiz(est: EstadoInterno): { motivo: 'reprovacao_dup
   if (erroOlho) gatilho = { motivo: 'erro_olho', desde: erroOlho.em }
   else if (reprovacoes.length >= 2) gatilho = { motivo: 'reprovacao_dupla', desde: reprovacoes[1].em }
   if (!gatilho) return null
-  if (est.teachBacks.some((t) => t.em >= gatilho!.desde)) return null
+  if (est.teachBacks.some((t) => Date.parse(t.em) >= Date.parse(gatilho!.desde))) return null
   return gatilho
 }

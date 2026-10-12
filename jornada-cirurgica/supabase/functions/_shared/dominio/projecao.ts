@@ -13,7 +13,6 @@ import type {
   EpisodioVisao,
   LenteVisao,
   MateriaisVisao,
-  ModeloId,
   RespostaAtual,
   ValoresLente,
 } from './tipos.ts'
@@ -39,7 +38,7 @@ import type { EstadoInterno } from './estado/tipos.ts'
 import { alertasDoEstado } from './regras/alertas.ts'
 import { blocosVisao } from './regras/blocos.ts'
 import { calcularDots } from './regras/dots.ts'
-import { hardStopsAbertos } from './regras/hardstops.ts'
+import { DEFINICAO_POR_CODIGO, hardStopsAbertos } from './regras/hardstops.ts'
 import { calcularIdentificacao } from './regras/identificacao.ts'
 import { contatoHumanoQuiz, pendenciasDoEstado } from './regras/pendencias.ts'
 import { motivoSuspensaoAvisos } from './mensagens.ts'
@@ -124,7 +123,7 @@ function lenteVisao(est: EstadoInterno, ator: Ator): LenteVisao {
   return v
 }
 
-function materiaisVisao(est: EstadoInterno): MateriaisVisao {
+function materiaisVisao(est: EstadoInterno, agora: string): MateriaisVisao {
   const m = est.materiais
   const enviados: MateriaisVisao['enviados'] = []
   for (const e of m.enviados) {
@@ -139,7 +138,7 @@ function materiaisVisao(est: EstadoInterno): MateriaisVisao {
     const data = est.agenda.dataCirurgia
     if (data && m.enviados.length && !m.abertoEm) {
       const d3 = inicioDoDiaLocal(somarDias(data, -3))
-      if (Date.parse(est.ultimoEventoEm) >= Date.parse(d3) && !est.teachBacks.some((t) => Date.parse(t.em) >= Date.parse(d3))) {
+      if (Date.parse(agora) >= Date.parse(d3) && !est.teachBacks.some((t) => Date.parse(t.em) >= Date.parse(d3))) {
         contatoHumano = { motivo: 'link_nao_aberto_d3', desde: d3 }
       }
     }
@@ -250,7 +249,7 @@ export function projetarVisao(estado: Estado, ator: Ator, agora: string): Episod
     contatos: Object.values(est.contatos).map((c) => ({ ...c })),
     lente: lenteVisao(est, ator),
     tcle: { status: est.tcle.status, link: est.tcle.link, historico: est.tcle.historico.map((h) => ({ status: h.status, em: h.em, porNome: nomeMembro(est, h.porId) })) },
-    materiais: materiaisVisao(est),
+    materiais: materiaisVisao(est, agora),
     avisosFamilia: { suspensos: !!motivoAvisos, ...(motivoAvisos ? { motivoSuspensao: motivoAvisos } : {}), mensagens: ent.mensagens.map((m) => ({ ...m })) },
     pendencias: pendenciasDoEstado(est, agora),
     intercorrencias: est.intercorrencias.map((i) => ({ descricao: i.descricao, em: i.em, porNome: nomeMembro(est, i.porId) })),
@@ -258,8 +257,14 @@ export function projetarVisao(estado: Estado, ator: Ator, agora: string): Episod
       ? { resultado: est.teachBack.resultado, ...(est.teachBack.observacao ? { observacao: est.teachBack.observacao } : {}), em: est.teachBack.em, porNome: nomeMembro(est, est.teachBack.porId) }
       : null,
     permissoes: permissoesDoAtor(est, ator),
+    hardStopsResolvidos: est.resolucoesHardStop.map((r) => ({
+      codigo: r.codigo,
+      titulo: DEFINICAO_POR_CODIGO[r.codigo]?.titulo ?? r.codigo,
+      resolucao: r.texto,
+      porNome: nomeMembro(est, r.porId),
+      em: r.em,
+    })),
   }
   return visao
 }
 
-export type { ModeloId }

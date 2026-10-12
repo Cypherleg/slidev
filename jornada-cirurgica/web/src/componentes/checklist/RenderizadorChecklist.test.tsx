@@ -115,7 +115,7 @@ describe('RenderizadorChecklist', () => {
     expect(med.getByText(/nome comercial/i)).toBeTruthy()
     expect(botao().disabled).toBe(true)
     fireEvent.change(med.getByLabelText('Nomes comerciais informados'), { target: { value: 'Caneta fictícia' } })
-    fireEvent.change(med.getByLabelText('Dose, horário, tipo'), { target: { value: '1 mg' } })
+    fireEvent.change(med.getByLabelText('Dose'), { target: { value: '1 mg' } })
     fireEvent.click(med.getByLabelText('Semanal'))
     fireEvent.change(med.getByLabelText('Data da última aplicação'), { target: { value: '2026-10-10' } })
     fireEvent.click(within(med.getByRole('radiogroup', { name: /Início ou aumento/ })).getByLabelText('Sim'))

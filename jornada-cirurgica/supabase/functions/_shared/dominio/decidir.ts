@@ -21,7 +21,6 @@ import type {
   CampoLente,
   CodigoHardStop,
   Contato,
-  DadosPlanoLente,
   Evento,
   ItemModelo,
   ModeloId,
@@ -37,7 +36,6 @@ import type {
   ViaComunicacao,
   Visibilidade,
 } from './tipos.ts'
-import { ORDEM_MODELOS } from './tipos.ts'
 import { montarEstado, interno } from './estado/montar.ts'
 import {
   cicloAtual,
@@ -58,7 +56,7 @@ import {
 } from './estado/consultas.ts'
 import type { EstadoInterno } from './estado/tipos.ts'
 import { ALERTAS_HS6, alertaComunicado, avaliarAlertasAtivos } from './regras/alertas.ts'
-import { impedimentosConclusao, incoerenciaAlergias, motivoIndisponivel } from './regras/blocos.ts'
+import { impedimentosConclusao, motivoIndisponivel } from './regras/blocos.ts'
 import {
   bloqueiosPara,
   codigosAbertos,
@@ -259,10 +257,10 @@ export const PRE = {
     if (rank(est) < RANK.d2_concluido || rank(est) >= RANK.time_out_concluido) erro('ESTADO', 'Aviso de atraso só no dia, antes do início da cirurgia.')
     return p
   },
-  etiqueta(est: EstadoInterno, ator: Ator): Papel {
+  etiqueta(_est: EstadoInterno, ator: Ator): Papel {
     return exigirPapel(ator, papeisPermitidosParaEvento('etiqueta.copiada'), 'copiar etiqueta')
   },
-  quaseEvento(est: EstadoInterno, ator: Ator): Papel {
+  quaseEvento(_est: EstadoInterno, ator: Ator): Papel {
     return exigirPapel(ator, papeisPermitidosParaEvento('quase_evento.registrado'), 'registrar quase-evento')
   },
   resolverHardStop(est: EstadoInterno, ator: Ator, codigo: CodigoHardStop): Papel {
@@ -585,7 +583,13 @@ function concluirBloco(r: Resultado, c: Extract<Comando, { tipo: 'bloco.concluir
     dados.confirmadorId = confirmador
   }
   r.evento('bloco.concluido', dados, papel, { motivos: motivosForaDeHoraConclusao(est, c.modelo, ctx.agora), versaoModelo: m.versao })
-  const gatilho = ({ admissao: 'admissao_concluida', time_out: 'inicio_cirurgia', sign_out: 'fim_cirurgia', alta: 'alta' } as const)[c.modelo as 'admissao']
+  const gatilhos: Partial<Record<ModeloId, 'admissao_concluida' | 'inicio_cirurgia' | 'fim_cirurgia' | 'alta'>> = {
+    admissao: 'admissao_concluida',
+    time_out: 'inicio_cirurgia',
+    sign_out: 'fim_cirurgia',
+    alta: 'alta',
+  }
+  const gatilho = gatilhos[c.modelo]
   if (gatilho) {
     const depois = r.estadoDepois()
     for (const msg of avisosAutomaticos(depois, gatilho, ctx)) {
@@ -950,7 +954,3 @@ export function decidir(estado: Estado, comando: Comando, ctx: ContextoDecisao):
   }
   return { eventos: r.eventos, lente: r.lente, mensagens: r.mensagens }
 }
-
-/** Ordem dos modelos (reexportada para a interface). */
-export const MODELOS_EM_ORDEM = ORDEM_MODELOS
-export type { DadosPlanoLente }

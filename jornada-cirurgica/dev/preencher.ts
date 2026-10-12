@@ -44,6 +44,7 @@ function valorPadrao(item: ItemModelo & { exigeSim?: boolean }, c: ContextoPreen
       return item.exigeSim || SIM_SEGURO.has(item.id) ? 'sim' : 'nao'
     case 'opcao':
       if (item.id === D7.primeiroSegundo) return c.segundoOlho ? 'segundo' : 'primeiro'
+      if (item.id === D7.semOculos) return 'nao'
       if (item.id === SI.condutaAlertas) return c.semAlertasD7 === false ? 'presente' : 'nao_se_aplica'
       return item.opcoes?.[0]?.valor
     case 'multipla':

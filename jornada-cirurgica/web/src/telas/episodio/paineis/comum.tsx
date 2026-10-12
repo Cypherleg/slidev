@@ -46,7 +46,7 @@ export function ChecklistDoBloco(props: PropsPainel & { modelo: ModeloId; modo?:
       {bloco.impedimentos.length > 0 && bloco.situacao !== 'concluido' && (
         <Aviso tipo="atencao" titulo="Impedimentos deste bloco">
           <ul className="lista-simples">
-            {bloco.impedimentos.map(i => (
+            {[...new Set(bloco.impedimentos)].map(i => (
               <li key={i}>{i}</li>
             ))}
           </ul>
@@ -76,8 +76,10 @@ export function ConcluirBloco(props: PropsPainel & { modelo: ModeloId; rotuloCon
   const perm = permissaoConcluir(visao, papeis, m)
   const motivos: string[] = []
   if (!perm.permitido) motivos.push(perm.motivo ?? 'Sem permissão para concluir.')
-  if (bloco.faltam.length) motivos.push(`Faltam ${bloco.faltam.length} ${bloco.faltam.length === 1 ? 'item obrigatório' : 'itens obrigatórios'}.`)
-  for (const i of bloco.impedimentos) motivos.push(i)
+  // O servidor já descreve os itens sem resposta nos impedimentos; só repete a contagem se ele não disse.
+  if (bloco.faltam.length && !bloco.impedimentos.some(i => /sem resposta/i.test(i)))
+    motivos.push(`Faltam ${bloco.faltam.length} ${bloco.faltam.length === 1 ? 'item obrigatório' : 'itens obrigatórios'}.`)
+  for (const i of bloco.impedimentos) if (!motivos.includes(i)) motivos.push(i)
   const encerrado = motivoEncerrado(visao)
   if (encerrado) motivos.push(encerrado)
   return (

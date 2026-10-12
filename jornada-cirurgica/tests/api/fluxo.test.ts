@@ -2,10 +2,10 @@
 // conferência cega, quarentena, hard stop, avisos em modo ensaio, intercorrência e página do paciente.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { CP1 } from '../../supabase/functions/_shared/dominio/modelos/ids.ts'
+import { CP1, SO } from '../../supabase/functions/_shared/dominio/modelos/ids.ts'
 import { ATOR_SISTEMA_ID, processarFila, restaurarToken } from '../../supabase/functions/_shared/api/index.ts'
 import type { AcaoEquipe } from '../../supabase/functions/_shared/api/contrato.ts'
-import { dataLocal, lenteFicticia } from '../../dev/roteiro.ts'
+import { dataLocal, lenteFicticia, roteiro } from '../../dev/roteiro.ts'
 import { bancoPronto, cpfTeste, criarAmbiente, despejoBanco, dominioPronto, ORIGEM, roteiroTeste, U, type Ambiente } from './apoio.ts'
 
 const HOJE = dataLocal(0)
@@ -54,6 +54,13 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
     await amb.ok(U.enfermagem, 'orientacoes.teach_back', { episodioId: id, versao: v.episodio.versao, resultado: 'adequado_primeira', observacao: null }, { ator: token })
     const [ev] = await amb.banco.sql`select autor_id, autor_papel, sessao_usuario_id from jornada_cirurgica.eventos where episodio_id = ${id} and tipo = 'orientacoes.teach_back'`
     expect(ev).toEqual({ autor_id: U.concierge.id, autor_papel: 'concierge', sessao_usuario_id: U.enfermagem.id })
+    // Confirmação por PIN inválida (outro aparelho ou adulterada) é recusada antes do domínio.
+    const outroAparelho = await amb.pin(U.enfermagem, U.circulante, 'aparelho-teste-0002')
+    const v1 = await r.obter(id)
+    for (const confirmadorToken of [outroAparelho, 'at1.x.y']) {
+      const resp = await amb.chamar(U.enfermagem, 'bloco.concluir', { episodioId: id, versao: v1.episodio.versao, modelo: 'd7', leitorId: U.enfermagem.id, confirmadorToken })
+      expect(resp.corpo).toMatchObject({ ok: false, erro: { codigo: 'validacao', detalhes: { campo: 'confirmadorToken' } } })
+    }
     // Sem o PIN, a enfermagem não pode o que é da concierge (domínio + RLS).
     const v2 = await r.obter(id)
     const semPin = await amb.chamar(U.enfermagem, 'lente.plano', { episodioId: id, versao: v2.episodio.versao, dados: { ...lenteFicticia('OE', 20), reserva: null, alvoRefrativo: null, dataPedido: null } })
@@ -76,7 +83,11 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
 
   describe('lente: conferência cega', () => {
     const PLANTADO = { modelo: 'LIO Plantada ZK917', dioptria: 23.75, lote: 'LOTE-PLANTADO-77', reserva: 24.25 }
-    const proibidos = ['ZK917', '23.75', '23,75', 'LOTE-PLANTADO-77', '24.25', '24,25']
+    // Números como valor; horário ISO ("…:23.751Z") não conta: depois dos centésimos vem dígito.
+    const proibidos: (string | RegExp)[] = ['ZK917', 'LOTE-PLANTADO-77', /(?<!\d)23[.,]75(?!\d)/, /(?<!\d)24[.,]25(?!\d)/]
+    const semProibidos = (texto: string, lista = proibidos) => {
+      for (const p of lista) typeof p === 'string' ? expect(texto).not.toContain(p) : expect(texto).not.toMatch(p)
+    }
     let id: string
 
     beforeAll(async () => {
@@ -84,7 +95,6 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
       id = await r.abrir(pid, 'OE', HOJE)
       await r.com(id, U.concierge, 'episodio.agendar', { dataCirurgia: HOJE, horario: '07:00', ordem: 1 })
       await r.contatos(id)
-      await r.responder(id, 'd7', U.concierge)
       await r.com(id, U.concierge, 'orientacoes.teach_back', { resultado: 'adequado_primeira', observacao: null })
       await r.com(id, U.concierge, 'lente.plano', {
         dados: { olho: 'OE', modelo: PLANTADO.modelo, dioptria: PLANTADO.dioptria, torica: false, cilindro: null, eixo: null, reserva: { modelo: PLANTADO.modelo, dioptria: PLANTADO.reserva }, alvoRefrativo: -0.5, dataPedido: dataLocal(-3) },
@@ -93,6 +103,8 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
       const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).toString('base64')
       await r.com(id, U.concierge, 'anexo.enviar', { tipo: 'foto_plano', contentType: 'image/png', base64: png })
       await r.com(id, U.concierge, 'tcle.status', { status: 'enviado', link: 'https://exemplo.invalid/tcle' })
+      await r.com(id, U.concierge, 'materiais.enviar', {})
+      await r.responder(id, 'd7', U.concierge)
       await r.concluir(id, 'd7', U.concierge)
       await r.com(id, U.concierge, 'lente.chegada', { dados: { dataChegada: dataLocal(-1), lote: PLANTADO.lote, validade: '2030-12' } })
       await r.responder(id, 'cp1', U.concierge)
@@ -102,6 +114,7 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
     it('a concierge vê o plano (e a leitura fica registrada)', async () => {
       const v = await r.obter(id, U.concierge)
       expect(JSON.stringify(v)).toContain('ZK917')
+      expect(JSON.stringify(v)).toMatch(proibidos[2] as RegExp) // controle positivo: a busca acharia o valor
       const [a] = await amb.banco.sql`select count(*)::int as n from jornada_cirurgica.acessos where episodio_id = ${id} and ator_id = ${U.concierge.id} and recurso = 'lente_conferencia_1'`
       expect(a.n).toBeGreaterThan(0)
     })
@@ -140,7 +153,7 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
         respostas.push(JSON.stringify(resp.corpo))
         if (acao === 'anexo.url') expect(resp.status).toBe(404)
       }
-      for (const texto of respostas) for (const p of proibidos) expect(texto).not.toContain(p)
+      for (const texto of respostas) semProibidos(texto)
       const vistos = await amb.banco.sql`select count(*)::int as n from jornada_cirurgica.acessos where ator_id = ${U.conferente.id} and recurso = 'lente_conferencia_1'`
       expect(vistos[0].n).toBe(0)
       expect(v.lente.plano).toBeUndefined()
@@ -164,9 +177,24 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
       const v = await r.obter(id, U.conferente)
       const depois = await amb.ok(U.conferente, 'lente.cp2', { episodioId: id, versao: v.episodio.versao, valores: { olho: 'OE', modelo: PLANTADO.modelo, dioptria: PLANTADO.dioptria, torica: false, cilindro: null, eixo: null } })
       expect(depois.lente.etapa).not.toBe('quarentena')
-      const texto = JSON.stringify(depois)
-      for (const p of ['LOTE-PLANTADO-77', '24.25', '24,25']) expect(texto).not.toContain(p)
+      semProibidos(JSON.stringify(depois), ['LOTE-PLANTADO-77', /(?<!\d)24[.,]25(?!\d)/])
     })
+  })
+
+  it('a autora do checkpoint 1 (com papel de conferente) é recusada no checkpoint 2', async () => {
+    const pid = await paciente('Paciente Teste Autora')
+    const id = await r.abrir(pid, 'OD', AMANHA)
+    await r.d7(id, { dataCirurgia: AMANHA, dioptria: 22.5 })
+    // U.dupla (concierge e conferente) registra a chegada e conclui o checkpoint 1.
+    const rDupla = roteiro((quem, acao, dados, ator) => amb.ok(quem as never, acao, dados, { ator }), { ...U, concierge: U.dupla }, (s, a) => amb.pin(s as never, a as never))
+    await rDupla.cp1(id)
+    const v = await r.obter(id, U.dupla)
+    const tenta = await amb.chamar(U.dupla, 'lente.cp2', { episodioId: id, versao: v.episodio.versao, valores: lenteFicticia('OD', 22.5) })
+    expect(tenta.status).toBe(403)
+    expect(tenta.corpo).toMatchObject({ ok: false, erro: { codigo: 'conferencia_cega' } })
+    // Outra conferente faz o checkpoint 2 normalmente.
+    const ok = await r.cp2(id, 22.5, U.conferente2)
+    expect(ok.lente.etapa).not.toBe('quarentena')
   })
 
   it('divergência plantada no checkpoint 2 → quarentena, hard stop e bloqueio até a resolução do cirurgião', async () => {
@@ -178,12 +206,15 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
     expect(q.lente.etapa).toBe('quarentena')
     const vc = await r.obter(id, U.cirurgiao)
     expect(vc.hardStops.map(h => h.codigo)).toContain('HS1_DIVERGENCIA_LIO')
-    // Nenhum bloco adiante conclui.
-    await r.responder(id, 'cp2', U.conferente)
+    // Nada adiante: nem marcar nem concluir o checkpoint 2, nem o D-2.
     const v = await r.obter(id, U.conferente)
-    const bloq = await amb.chamar(U.conferente, 'bloco.concluir', { episodioId: id, versao: v.episodio.versao, modelo: 'cp2' })
-    expect(bloq.status).toBe(409)
-    expect(bloq.corpo).toMatchObject({ ok: false, erro: { codigo: 'hard_stop' } })
+    for (const modelo of ['cp2', 'd2'] as const) {
+      const bloq = await amb.chamar(U.conferente, 'bloco.concluir', { episodioId: id, versao: v.episodio.versao, modelo })
+      expect(bloq.status).toBe(409)
+      expect(['hard_stop', 'ordem']).toContain(bloq.corpo.ok ? '' : bloq.corpo.erro.codigo)
+    }
+    const marcar = await amb.chamar(U.conferente, 'checklist.responder', { episodioId: id, versao: v.episodio.versao, modelo: 'cp2', respostas: [{ itemId: 'CP2.biometria_original', valor: 'sim' }] })
+    expect(marcar.status).toBe(409)
     // Ninguém além do cirurgião resolve.
     const naoCir = await amb.chamar(U.concierge, 'lente.resolver_quarentena', { episodioId: id, versao: v.episodio.versao, resolucao: 'tentativa', acao: 'manter_plano' })
     expect(naoCir.status).toBe(403)
@@ -221,6 +252,7 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
     await r.anestesia(id)
     await r.timeOut(id)
     await r.signOut(id)
+    await r.liberacaoAnestesia(id)
     const fim = await r.alta(id)
     expect(fim.episodio.estado).toBe('alta')
     const msgs = await amb.banco.sql`select gatilho, estado, telefone, texto from jornada_cirurgica.mensagens_saida where episodio_id = ${id}`
@@ -252,7 +284,8 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
     await r.signIn(id)
     await r.anestesia(id)
     await r.timeOut(id)
-    await r.signOut(id)
+    await r.signOut(id, { [SO.intercorrencias]: 'registradas' })
+    await r.liberacaoAnestesia(id)
     await r.alta(id)
     await r.com(id, U.enfermagem, 'avisos.atraso', { minutos: 30 }).catch(() => null)
     const depois = (await amb.banco.sql`select count(*)::int as n from jornada_cirurgica.mensagens_saida where episodio_id = ${id}`)[0].n
@@ -262,7 +295,6 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
   it('página do paciente: token só como hash; abertura, material e quiz como eventos do paciente; não mostra o olho', async () => {
     const pid = await paciente('Paciente Teste Pagina')
     const id = await r.abrir(pid, 'OE', AMANHA)
-    await amb.banco.sql`insert into jornada_cirurgica.materiais (codigo, versao, titulo, tipo, url, momento, publico, ativo) values ('video_preparo', 1, 'Video de preparo (exemplo)', 'video', 'https://exemplo.invalid/video-preparo', 'd7', 'paciente', true) on conflict do nothing`
     await r.d7(id, { dataCirurgia: AMANHA, dioptria: 21.0 })
     const [msg] = await amb.banco.sql`select texto, parametros from jornada_cirurgica.mensagens_saida where episodio_id = ${id} and parametros ? '_link_token_cifrado' limit 1`
     expect(msg).toBeTruthy()
@@ -276,7 +308,11 @@ describe.skipIf(!bancoPronto || !dominioPronto)('fluxo pela API (banco real)', (
     const corpo = pag.corpo as { ok: true; dados: { primeiroNome: string; quiz: unknown[]; podeResponder: boolean; materiais: { id: string }[] } }
     expect(corpo.dados.primeiroNome).toBe('Paciente')
     expect(corpo.dados.podeResponder).toBe(true)
-    expect(JSON.stringify(corpo)).not.toMatch(/"OE"|OLHO ESQUERDO|"olho"/)
+    // O olho não aparece (a pergunta 1 do quiz oferece os dois olhos, sem indicar o do episódio).
+    const { quiz: perguntas, ...semQuiz } = corpo.dados
+    expect(JSON.stringify(semQuiz)).not.toMatch(/"OE"|"OD"|OLHO|olho/i)
+    expect(JSON.stringify(perguntas)).toContain('"OD"')
+    expect(JSON.stringify(perguntas)).toContain('"OE"')
     const materialId = corpo.dados.materiais[0]?.id
     if (materialId) expect((await amb.paciente(token, 'material.visualizado', { materialId })).status).toBe(200)
     const respostas = { 1: 'OE', 2: 'F', 3: 'a', 4: 'b', 5: 'F', 6: 'F', 7: 'b', 8: 'd', 9: 'F', 10: 'b', 11: 'F' }

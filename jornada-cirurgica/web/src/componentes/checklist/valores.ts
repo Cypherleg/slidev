@@ -21,12 +21,22 @@ export const ROTULO_USO: Record<ValorMedicamento['uso'], string> = {
  * O modelo não marca isso explicitamente: a tela reconhece pelos ids estáveis do domínio (D7.glp1,
  * D7.insulina) e, para modelos futuros, pelo texto do item.
  */
-export function camposExtrasMedicamento(item: Pick<ItemModelo, 'id' | 'texto'>): { glp1: boolean; insulina: boolean } {
+export function camposExtrasMedicamento(item: Pick<ItemModelo, 'id' | 'texto'>): { glp1: boolean; insulina: boolean; colirio: boolean } {
   const t = `${item.id} ${item.texto}`.toLowerCase()
   return {
     glp1: item.id === D7.glp1 || /glp|tirzepatid|semaglut/.test(t),
     insulina: item.id === D7.insulina || /insulin|antidiab/.test(t),
+    colirio: item.id === D7.colirios,
   }
+}
+
+/** Rótulo do campo "detalhes" conforme o item (POP §1.B). */
+export function rotuloDetalhesMedicamento(item: Pick<ItemModelo, 'id' | 'texto'>): string {
+  const e = camposExtrasMedicamento(item)
+  if (e.glp1) return 'Dose'
+  if (e.insulina) return 'Tipo, dose e horário'
+  if (e.colirio) return 'Em qual olho (e como usa)'
+  return 'Dose, horário, tipo'
 }
 
 export const ROTULO_CAMPO_PESSOA: Record<keyof ValorPessoa, string> = {
@@ -62,7 +72,9 @@ export function validarValor(item: ItemModelo, v: ValorResposta | undefined | nu
     }
     case 'multipla': {
       const validos = (item.opcoes ?? []).map(o => o.valor)
-      return Array.isArray(v) && v.length > 0 && v.every(x => validos.includes(x)) ? null : 'Marque pelo menos uma opção.'
+      if (!(Array.isArray(v) && v.length > 0 && v.every(x => validos.includes(x)))) return 'Marque pelo menos uma opção.'
+      if (item.id === D7.mobilidade && v.includes('sem_limitacao') && v.length > 1) return '"Sem limitação" não combina com outras opções.'
+      return null
     }
     case 'texto':
       return typeof v === 'string' && v.trim() !== '' ? null : 'Escreva a resposta.'
@@ -84,13 +96,21 @@ export function validarValor(item: ItemModelo, v: ValorResposta | undefined | nu
       if (m.uso === 'nao') return null
       if (!m.nomes || m.nomes.trim() === '') return 'Escreva o nome comercial informado.'
       const extras = camposExtrasMedicamento(item)
+      const semDetalhes = !m.detalhes || m.detalhes.trim() === ''
+      if (extras.glp1 && m.ultimaAplicacao && !dataValida(m.ultimaAplicacao)) return 'GLP-1: data da última aplicação inválida.'
+      if (m.uso !== 'usa') return null
       if (extras.glp1) {
+        if (semDetalhes) return 'GLP-1: registre a dose.'
         if (m.aplicacao !== 'semanal' && m.aplicacao !== 'diaria') return 'GLP-1: informe se a aplicação é semanal ou diária.'
         if (!dataValida(m.ultimaAplicacao)) return 'GLP-1: informe a data da última aplicação.'
         if (typeof m.inicioOuAumentoUltimos3Meses !== 'boolean') return 'GLP-1: responda se iniciou ou aumentou a dose nos últimos 3 meses.'
         if (typeof m.nauseaOuVomito !== 'boolean') return 'GLP-1: responda se tem náusea ou vômito.'
       }
-      if (extras.insulina && typeof m.insulinaOuSulfonilureia !== 'boolean') return 'Responda se é insulina ou sulfonilureia.'
+      if (extras.insulina) {
+        if (semDetalhes) return 'Registre tipo, dose e horário.'
+        if (typeof m.insulinaOuSulfonilureia !== 'boolean') return 'Responda se é insulina ou sulfonilureia (dot D).'
+      }
+      if (extras.colirio && semDetalhes) return 'Registre o nome e o olho do colírio.'
       return null
     }
     case 'alergia': {

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { ItemModelo, ValorAlergia, ValorMedicamento, ValorPessoa, ValorResposta } from '@dominio/tipos.ts'
 import { EscolhaUnica } from '../base/index.tsx'
 import { formatarNumero, lerNumero } from '../formato.ts'
-import { camposExtrasMedicamento, ROTULO_CAMPO_PESSOA, ROTULO_USO } from './valores.ts'
+import { camposExtrasMedicamento, ROTULO_CAMPO_PESSOA, ROTULO_USO, rotuloDetalhesMedicamento } from './valores.ts'
 
 export interface PropsCampo {
   item: ItemModelo
@@ -238,7 +238,7 @@ function CampoMedicamento(p: PropsCampo) {
             <input id={`${p.idBase}-nomes`} type="text" autoComplete="off" value={m.nomes ?? ''} disabled={p.desabilitado} onChange={e => mudar({ nomes: e.target.value })} />
           </div>
           <div className="campo">
-            <label htmlFor={`${p.idBase}-detalhes`}>Dose, horário, tipo</label>
+            <label htmlFor={`${p.idBase}-detalhes`}>{rotuloDetalhesMedicamento(p.item)}</label>
             <input id={`${p.idBase}-detalhes`} type="text" autoComplete="off" value={m.detalhes ?? ''} disabled={p.desabilitado} onChange={e => mudar({ detalhes: e.target.value })} />
           </div>
           {extras.glp1 && (

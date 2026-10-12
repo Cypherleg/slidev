@@ -3,6 +3,7 @@
 
 import type { AcaoEquipe, AcoesEquipe } from '../supabase/functions/_shared/api/contrato.ts'
 import type { EpisodioVisao, ModeloId, Olho, ValorResposta } from '../supabase/functions/_shared/dominio/index.ts'
+import { AN, D7, SI } from '../supabase/functions/_shared/dominio/modelos/ids.ts'
 import { respostasDoModelo } from './preencher.ts'
 
 export interface Pessoa {
@@ -58,9 +59,12 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: 
     filtro?: (itemId: string, secaoId: string) => boolean,
   ): Promise<EpisodioVisao> => {
     const v = await obter(id, quem)
+    // Cada item é respondido uma vez (por quem chega primeiro); correção só quando pedida em `sobrepor`.
+    const jaRespondidos = new Set(Object.keys(v.respostas[modelo] ?? {}))
+    const filtroFinal = (itemId: string, secaoId: string) => (itemId in sobrepor || !jaRespondidos.has(itemId)) && (!filtro || filtro(itemId, secaoId))
     const anteriores = v.identificacao.segundoOlho !== null
     const semAlertas = !v.alertas.some(a => a.origem.modelo === 'd7' && !a.inativo)
-    const respostas = respostasDoModelo(v.modelos[modelo], quem.papeis, { olho: v.episodio.olho, hoje: dataLocal(0), dataCirurgia: v.episodio.dataCirurgia, segundoOlho: anteriores, semAlertasD7: semAlertas }, sobrepor, filtro)
+    const respostas = respostasDoModelo(v.modelos[modelo], quem.papeis, { olho: v.episodio.olho, hoje: dataLocal(0), dataCirurgia: v.episodio.dataCirurgia, segundoOlho: anteriores, semAlertasD7: semAlertas }, sobrepor, filtroFinal)
     if (!respostas.length) return v
     return chamar(quem, 'checklist.responder', { episodioId: id, versao: v.episodio.versao, modelo, respostas })
   }
@@ -105,13 +109,14 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: 
     const v0 = await obter(id)
     await com(id, eq.concierge, 'episodio.agendar', { dataCirurgia: o.dataCirurgia, horario: o.horario ?? '07:00', ordem: o.ordem ?? 1 })
     await contatos(id)
-    await responder(id, 'd7', eq.concierge, o.sobrepor ?? {})
     await com(id, eq.concierge, 'orientacoes.teach_back', { resultado: 'adequado_primeira', observacao: null })
     await com(id, eq.concierge, 'lente.plano', {
       dados: { ...lenteFicticia(v0.episodio.olho, o.dioptria), reserva: { modelo: 'LIO Teste Monofocal XY', dioptria: o.dioptria + 0.5 }, alvoRefrativo: -0.25, dataPedido: dataLocal(-3) },
     })
     await com(id, eq.concierge, 'tcle.status', { status: 'enviado', link: 'https://exemplo.invalid/tcle/assinatura' })
+    // Fechamento (POP §1.G): materiais enviados pelo painel antes de marcar o item.
     if (o.materiais !== false) await com(id, eq.concierge, 'materiais.enviar', {})
+    await responder(id, 'd7', eq.concierge, { [D7.materiais]: o.materiais === false ? 'presencial' : 'enviados', ...(o.sobrepor ?? {}) })
     await concluir(id, 'd7', eq.concierge)
   }
 
@@ -146,14 +151,20 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: 
 
   /** Sign In: a circulante lê em voz alta; a enfermagem confirma com o PIN. */
   const signIn = async (id: string) => {
+    // Ordem (regra 4): identificação e consentimento, marcação do sítio pelo cirurgião, só então o midriático.
+    await responder(id, 'sign_in', eq.circulante, {}, item => item !== SI.midriatico)
+    await responder(id, 'sign_in', eq.cirurgiao)
     await responder(id, 'sign_in', eq.circulante)
     await responder(id, 'sign_in', eq.enfermagem)
-    await responder(id, 'sign_in', eq.cirurgiao)
     const confirmador = await pin(eq.circulante, eq.enfermagem)
     return concluir(id, 'sign_in', eq.circulante, { leitorId: eq.circulante.id, confirmadorToken: confirmador })
   }
 
-  const anestesia = async (id: string) => {
+  /** Anestesia antes da incisão: jejum/medicações e monitorização (a liberação vem depois do Sign Out). */
+  const anestesia = async (id: string) => responder(id, 'anestesia', eq.anestesista, {}, item => item !== AN.liberacao)
+
+  /** Liberação da recuperação (depois do Sign Out) e conclusão do bloco de anestesia. */
+  const liberacaoAnestesia = async (id: string) => {
     await responder(id, 'anestesia', eq.anestesista)
     return concluir(id, 'anestesia', eq.anestesista)
   }
@@ -169,8 +180,8 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: 
     return concluir(id, 'time_out', eq.circulante, { leitorId: eq.circulante.id, confirmadorToken: confirmador })
   }
 
-  const signOut = async (id: string) => {
-    await responder(id, 'sign_out', eq.circulante)
+  const signOut = async (id: string, sobrepor: Record<string, ValorResposta | null> = {}) => {
+    await responder(id, 'sign_out', eq.circulante, sobrepor)
     await responder(id, 'sign_out', eq.cirurgiao)
     await responder(id, 'sign_out', eq.anestesista)
     return concluir(id, 'sign_out', eq.circulante)
@@ -182,5 +193,5 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: (sessao: Pessoa, alvo: 
     return concluir(id, 'alta', eq.enfermagem)
   }
 
-  return { obter, com, responder, concluir, cadastrar, abrir, contatos, d7, cp1, cp2, d2, admissao, signIn, anestesia, timeOut, signOut, alta }
+  return { obter, com, responder, concluir, cadastrar, abrir, contatos, d7, cp1, cp2, d2, admissao, signIn, anestesia, timeOut, signOut, liberacaoAnestesia, alta }
 }

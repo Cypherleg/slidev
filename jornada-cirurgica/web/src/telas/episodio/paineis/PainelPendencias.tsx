@@ -13,6 +13,11 @@ export function destinoPendencia(local: string | undefined): { aba: 'd7' | 'lent
       return { aba: 'd7', ancora: resto ? `ck-d7-secao-${resto}` : 'checklist-d7' }
     case 'alertas':
       return { aba: 'd7', ancora: 'alertas' }
+    case 'hardstops':
+    case 'hard_stops':
+      return { aba: 'd7', ancora: 'titulo-hard-stops' }
+    case 'agenda':
+      return { aba: 'd7', ancora: 'agenda' }
     case 'contatos':
       return { aba: 'd7', ancora: 'contatos' }
     case 'materiais':
@@ -24,9 +29,11 @@ export function destinoPendencia(local: string | undefined): { aba: 'd7' | 'lent
     case 'tcle':
       return { aba: 'd2', ancora: 'tcle' }
     case 'lente':
+      return { aba: 'lente', ancora: resto === 'plano' ? 'plano' : resto === 'chegada' || resto === 'cp1' ? 'chegada' : resto === 'cp2' ? 'checkpoint-2' : undefined }
     case 'cp1':
+      return { aba: 'lente', ancora: 'chegada' }
     case 'cp2':
-      return { aba: 'lente' }
+      return { aba: 'lente', ancora: 'checkpoint-2' }
     case 'd2':
     case 'etiquetas':
       return { aba: 'd2' }

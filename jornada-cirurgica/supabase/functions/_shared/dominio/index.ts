@@ -1,23 +1,16 @@
 // Superfície pública do domínio. A camada de API e a interface importam SOMENTE daqui.
 // As assinaturas abaixo são o contrato entre agentes; a implementação fica nos módulos
-// do próprio diretório (modelos/, estado.ts, decidir.ts, regras/, mensagens.ts, ...).
-// Funções ainda não implementadas lançam ErroDominio('NAO_IMPLEMENTADO').
+// do próprio diretório (modelos/, estado/, decidir.ts, regras/, mensagens.ts, ...).
 
 import type {
   Alerta,
   CampoLente,
-  CodigoHardStop,
   ConfigJornada,
-  Contato,
-  DadosChegadaLente,
-  DadosPlanoLente,
   EpisodioResumoDia,
   EpisodioVisao,
   EstadoEpisodio,
   EstadoMensagem,
-  Evento,
   GatilhoAviso,
-  MensagemSaida,
   ModeloChecklist,
   ModeloId,
   NovoEvento,
@@ -28,249 +21,69 @@ import type {
   QuizTentativa,
   StatusTcle,
   ValoresLente,
-  ValorResposta,
-  ViaComunicacao,
-  Visibilidade,
 } from './tipos.ts'
+import type { Ator, Comando, ContextoDecisao, EntradaEstado, Estado, Etiqueta, Indicador, ResultadoDecisao } from './contrato.ts'
+import { DEFINICOES_HARD_STOP as DEFS } from './regras/hardstops.ts'
+
+import { modelosPadrao as _modelosPadrao } from './modelos/v1/index.ts'
+import { montarEstado as _montarEstado, interno } from './estado/montar.ts'
+import { decidir as _decidir } from './decidir.ts'
+import { projetarVisao as _projetarVisao } from './projecao.ts'
+import { resumoDia as _resumoDia, resumoVespera as _resumoVespera, visaoLeituraDia as _visaoLeituraDia } from './resumos.ts'
+import { pendenciasDoEstado } from './regras/pendencias.ts'
+import { alertasDoEstado } from './regras/alertas.ts'
+import { abrirEpisodio as _abrirEpisodio, cadastrarPaciente as _cadastrarPaciente } from './abertura.ts'
+import { gerarEtiquetas as _gerarEtiquetas } from './etiquetas.ts'
+import { corrigirQuiz as _corrigirQuiz, perguntasQuiz as _perguntasQuiz } from './quiz.ts'
+import { calcularIndicadores as _calcularIndicadores } from './indicadores.ts'
+import { compararLente as _compararLente, formatarDioptria as _formatarDioptria } from './regras/lente.ts'
+import { normalizarCpf as _normalizarCpf, validarCpf as _validarCpf } from './util/cpf.ts'
+import { normalizarNome as _normalizarNome, primeiroNome as _primeiroNome, similaridadeNomes as _similaridadeNomes } from './util/texto.ts'
+import { dataLocal as _dataLocal, formatarData as _formatarData, formatarDataHora as _formatarDataHora } from './util/datas.ts'
+import { mascararTelefone as _mascararTelefone } from './util/telefone.ts'
+import { configPadrao as _configPadrao } from './config.ts'
+import { papeisPermitidosParaEvento as _papeisPermitidosParaEvento } from './permissoes.ts'
 
 export * from './tipos.ts'
+export * from './contrato.ts'
 
 // ---------------------------------------------------------------------------
-// Erros
+// Funções (contrato)
 // ---------------------------------------------------------------------------
 
-export type CodigoErroDominio =
-  | 'NAO_IMPLEMENTADO'
-  | 'SEM_PERMISSAO' // papel do ator não pode executar o comando
-  | 'HARD_STOP' // hard stop aberto impede a passagem
-  | 'ORDEM' // ordem obrigatória não respeitada (regra 4)
-  | 'VALIDACAO' // dado inválido ou faltante
-  | 'ESTADO' // comando incompatível com o estado do episódio
-  | 'CONFERENCIA_CEGA' // ator viu ou registrou a primeira conferência
-
-export class ErroDominio extends Error {
-  constructor(
-    public readonly codigo: CodigoErroDominio,
-    mensagem: string,
-    public readonly detalhes?: Record<string, unknown>,
-  ) {
-    super(mensagem)
-    this.name = 'ErroDominio'
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Entradas
-// ---------------------------------------------------------------------------
-
-export interface Ator {
-  id: string
-  nome: string
-  papeis: Papel[]
-  sessaoUsuarioId: string
-  aparelhoId: string | null
-}
-
-export type EtapaRegistroLente = 'plano' | 'chegada' | 'cp2' | 'time_out'
-
-export interface LeituraTimeOut {
-  modelo: string
-  dioptria: number
-  cilindro: number | null
-  eixo: number | null
-}
-
-export interface RegistroLente {
-  id: string
-  episodioId: string
-  ciclo: number
-  etapa: EtapaRegistroLente
-  dados: DadosPlanoLente | DadosChegadaLente | ValoresLente | LeituraTimeOut
-  autorId: string
-  registradoEm: string
-  visibilidade: Visibilidade
-}
-
-export type NovoRegistroLente = Omit<RegistroLente, 'registradoEm'>
-
-export interface DadosEpisodioBase {
-  id: string
-  pacienteId: string
-  olho: Olho
-  cirurgiaoId: string
-  tipoCirurgia: string
-  tipoLente: string
-  dataSugerida: string | null
-  dataCirurgia: string | null
-  horario: string | null
-  ordem: number | null
-  versao: number
-  abertoEm: string
-  versoesModelos: Record<ModeloId, string>
-}
-
-export interface EntradaEstado {
-  episodio: DadosEpisodioBase
-  paciente: Paciente
-  /** Eventos do episódio em ordem de `seq`. Podem ser só os visíveis ao ator (leitura) ou todos (decisão). */
-  eventos: Evento[]
-  lente: RegistroLente[]
-  modelos: Record<ModeloId, ModeloChecklist>
-  membros: Record<string, { id: string; nome: string; papeis: Papel[] }>
-  mensagens: MensagemSaida[]
-  contexto: {
-    /** Outros episódios com cirurgia na mesma data (homônimo ou nome parecido). */
-    mesmoDia: { episodioId: string; pacienteId: string; nomeCompleto: string; dataNascimento: string }[]
-    /** Episódios anteriores do mesmo paciente (2º olho). */
-    anterioresDoPaciente: { episodioId: string; olho: Olho; dataCirurgia: string | null; estado: EstadoEpisodio }[]
-  }
-  config: ConfigJornada
-}
-
-/** Estado do episódio após dobrar os eventos. Estrutura interna do domínio. */
-export interface Estado {
-  readonly entrada: EntradaEstado
-  readonly estado: EstadoEpisodio
-  /** Campos internos adicionais ficam a critério do módulo de estado. */
-  readonly [chave: string]: unknown
-}
-
-export interface ContextoDecisao {
-  ator: Ator
-  agora: string // ISO UTC
-  gerarId: () => string // uuid v4 fornecido pela API (o domínio não usa aleatoriedade)
-  config: ConfigJornada
-  /** Envio a pacientes habilitado? false = modo ensaio (mensagens montadas e registradas, não saem). */
-  envioHabilitado: boolean
-  /** Base pública da página do paciente, ex.: 'https://.../p/'. */
-  urlPaginaPaciente?: string
-  /**
-   * O ator já consultou dados do checkpoint 1 deste episódio (tabela `acessos`)?
-   * A API informa; o domínio recusa o checkpoint 2 nesse caso (conferência cega).
-   */
-  atorViuConferencia1?: boolean
-}
-
-export interface NovaMensagem {
-  id: string
-  gatilho: GatilhoAviso
-  contatoId: string
-  telefone: string
-  texto: string
-  modeloMeta: string | null
-  parametros: Record<string, string>
-  chaveIdempotencia: string
-  estadoInicial: Extract<EstadoMensagem, 'ensaio' | 'pendente'>
-}
-
-export interface ResultadoDecisao {
-  eventos: NovoEvento[]
-  lente: NovoRegistroLente[]
-  mensagens: NovaMensagem[]
-}
-
-// ---------------------------------------------------------------------------
-// Comandos (cada ação de escrita da API vira um comando validado pelo domínio)
-// ---------------------------------------------------------------------------
-
-export type CausaCancelamento =
-  | 'sem_acompanhante'
-  | 'colirio_nao_usado'
-  | 'medicacao_nao_ajustada'
-  | 'olho_vermelho_nao_avisado'
-  | 'tcle_ausente'
-  | 'lio_indisponivel'
-  | 'outra'
-
-export type Comando =
-  | { tipo: 'episodio.agendar'; dataCirurgia: string | null; horario?: string | null; ordem?: number | null }
-  | { tipo: 'checklist.responder'; modelo: ModeloId; respostas: { itemId: string; valor: ValorResposta; observacao?: string | null }[] }
-  | { tipo: 'bloco.concluir'; modelo: ModeloId; leitorId?: string | null; confirmadorId?: string | null }
-  | { tipo: 'alerta.comunicar'; alertaId: string; via: ViaComunicacao; cirurgiaoId: string; observacao?: string | null }
-  | { tipo: 'alerta.conduta'; alertaId: string; conduta: string }
-  | { tipo: 'contato.salvar'; contato: Omit<Contato, 'confirmadoEm' | 'confirmadoPor'> }
-  | { tipo: 'contato.remover'; contatoId: string }
-  | { tipo: 'contato.confirmar'; contatoId: string }
-  | { tipo: 'orientacoes.teach_back'; resultado: 'adequado_primeira' | 'apos_reorientacao' | 'inadequado'; observacao?: string | null }
-  | { tipo: 'lente.plano'; dados: DadosPlanoLente }
-  | { tipo: 'lente.chegada'; dados: DadosChegadaLente }
-  | { tipo: 'lente.cp2'; valores: ValoresLente }
-  | { tipo: 'lente.time_out'; leitura: LeituraTimeOut }
-  | { tipo: 'lente.resolver_quarentena'; resolucao: string; acao: 'manter_plano' | 'novo_plano' }
-  | { tipo: 'lente.troca_d0'; motivo: string }
-  | { tipo: 'anexo.adicionar'; anexoId: string; tipoAnexo: 'foto_plano'; sha256: string }
-  | { tipo: 'tcle.status'; status: Exclude<StatusTcle, 'nao_enviado'>; link?: string | null }
-  | { tipo: 'materiais.enviar'; tokenLink: string; expiraEm: string; materiais: MaterialCatalogo[] }
-  | { tipo: 'hardstop.resolver'; codigo: CodigoHardStop; resolucao: string }
-  | { tipo: 'intercorrencia.registrar'; descricao: string }
-  | { tipo: 'episodio.suspender'; motivo: string; causa: CausaCancelamento | null; evitavel: boolean | null }
-  | { tipo: 'episodio.cancelar'; motivo: string; causa: CausaCancelamento | null; evitavel: boolean | null }
-  | { tipo: 'avisos.atraso'; minutos: number | null }
-  | { tipo: 'etiqueta.copiada'; etiqueta: TipoEtiqueta }
-  | { tipo: 'quase_evento.registrar'; etapa: 'chegada' | 'd2' | 'd0'; descricao: string }
-
-export interface MaterialCatalogo {
-  id: string
-  codigo: string
-  versao: number
-  titulo: string
-  tipo: 'video' | 'texto' | 'video_tcle' | 'link_tcle' | 'outro'
-  url: string | null
-  conteudo: string | null
-  momento: 'd7' | 'd3' | 'd2' | 'd1' | 'd0' | 'alta'
-  publico: 'paciente' | 'cuidador' | 'familiar'
-  ativo: boolean
-}
-
-export type TipoEtiqueta = 'peito' | 'pulseira' | 'caixa_lente' | 'alertas'
-
-export interface Etiqueta {
-  tipo: TipoEtiqueta
-  titulo: string
-  texto: string
-}
-
-// ---------------------------------------------------------------------------
-// Funções (contrato). Implementações substituem os stubs abaixo.
-// ---------------------------------------------------------------------------
-
-const naoImplementado = (nome: string): never => {
-  throw new ErroDominio('NAO_IMPLEMENTADO', `Função de domínio não implementada: ${nome}`)
-}
-
-/** Modelos de checklist v1 transcritos do POP v0.4. */
-export function modelosPadrao(): Record<ModeloId, ModeloChecklist> {
-  return naoImplementado('modelosPadrao')
+/** Modelos de checklist v1 transcritos do POP v0.4. `config` opcional: itens extras da anestesia. */
+export function modelosPadrao(config?: Pick<ConfigJornada, 'itensAnestesiaExtras'> | null): Record<ModeloId, ModeloChecklist> {
+  return _modelosPadrao(config)
 }
 
 /** Dobra os eventos num Estado. Funciona com o conjunto completo ou só com os visíveis ao ator. */
 export function montarEstado(entrada: EntradaEstado): Estado {
-  return naoImplementado(`montarEstado(${entrada.episodio.id})`)
+  return _montarEstado(entrada)
 }
 
 /** Valida o comando contra o estado COMPLETO e devolve o que gravar. Lança ErroDominio. */
 export function decidir(estado: Estado, comando: Comando, ctx: ContextoDecisao): ResultadoDecisao {
-  return naoImplementado(`decidir(${comando.tipo}, ${estado.estado}, ${ctx.ator.id})`)
+  return _decidir(estado, comando, ctx)
 }
 
 /** Visão do episódio filtrada pelo papel do ator (conferência cega aplicada aqui também). */
 export function projetarVisao(estado: Estado, ator: Ator, agora: string): EpisodioVisao {
-  return naoImplementado(`projetarVisao(${estado.estado}, ${ator.id}, ${agora})`)
+  return _projetarVisao(estado, ator, agora)
 }
 
 /** Linha para a lista do dia e para a projeção `episodios.resumo` (sem valores de lente). */
 export function resumoDia(estado: Estado, agora: string): EpisodioResumoDia {
-  return naoImplementado(`resumoDia(${estado.estado}, ${agora})`)
+  return _resumoDia(estado, agora)
 }
 
 /** O que falta neste episódio: de quem depende e desde quando. */
 export function pendenciasDoEpisodio(estado: Estado, agora: string): Pendencia[] {
-  return naoImplementado(`pendenciasDoEpisodio(${estado.estado}, ${agora})`)
+  return pendenciasDoEstado(interno(estado), agora)
 }
 
 /** Alertas ativos do episódio (ALERTA e sinalizados), com comunicação e conduta. */
 export function alertasDoEpisodio(estado: Estado): Alerta[] {
-  return naoImplementado(`alertasDoEpisodio(${estado.estado})`)
+  return alertasDoEstado(interno(estado))
 }
 
 /** Evento de abertura de episódio (D-7). Valida campos; calcula 2º olho. */
@@ -288,7 +101,7 @@ export function abrirEpisodio(
   },
   ctx: ContextoDecisao,
 ): { evento: NovoEvento; avisos: string[] } {
-  return naoImplementado(`abrirEpisodio(${entrada.episodioId}, ${ctx.ator.id})`)
+  return _abrirEpisodio(entrada, ctx)
 }
 
 /** Evento de cadastro de paciente (dados conferidos com documento com foto). */
@@ -305,22 +118,22 @@ export function cadastrarPaciente(
   },
   ctx: ContextoDecisao,
 ): NovoEvento {
-  return naoImplementado(`cadastrarPaciente(${entrada.pacienteId}, ${ctx.ator.id})`)
+  return _cadastrarPaciente(entrada, ctx)
 }
 
 /** Etiquetas (texto) a partir dos modelos configuráveis. */
 export function gerarEtiquetas(estado: Estado, config: ConfigJornada): Etiqueta[] {
-  return naoImplementado(`gerarEtiquetas(${estado.estado}, ${Object.keys(config).length})`)
+  return _gerarEtiquetas(estado, config)
 }
 
 /** Perguntas do quiz (POP §6), sem gabarito, para a página do paciente. */
 export function perguntasQuiz(): { numero: number; texto: string; critica: boolean; pontua: boolean; opcoes: { valor: string; rotulo: string }[]; tipo: 'opcao' | 'quem_instila' }[] {
-  return naoImplementado('perguntasQuiz')
+  return _perguntasQuiz()
 }
 
 /** Corrige uma tentativa (4 críticas + pelo menos 9 de 11 pontuadas; pergunta 1 conferida contra o olho do episódio). */
 export function corrigirQuiz(respostas: Record<number, string>, olhoEpisodio: Olho, quemInstila?: { eu: boolean; nome?: string }): QuizTentativa {
-  return naoImplementado(`corrigirQuiz(${Object.keys(respostas).length}, ${olhoEpisodio}, ${quemInstila?.eu})`)
+  return _corrigirQuiz(respostas, olhoEpisodio, quemInstila)
 }
 
 /** Visão de leitura do dia para o resumo do dia cirúrgico (paciente, olho, lente, ordem, alertas). Só cirurgião e gestora. */
@@ -328,7 +141,7 @@ export function visaoLeituraDia(estados: Estado[], ator: Ator, data: string): {
   data: string
   episodios: { ordem: number | null; horario: string | null; paciente: string; nascimento: string; olho: string; lente: { modelo: string; dioptria: string; cilindro: string | null; eixo: number | null; etapa: string } | null; alertas: string[]; dots: string[]; estado: EstadoEpisodio }[]
 } {
-  return naoImplementado(`visaoLeituraDia(${estados.length}, ${ator.id}, ${data})`)
+  return _visaoLeituraDia(estados, ator, data)
 }
 
 /** Resumo da véspera para o cirurgião: episódios do dia, alertas sem conduta, lentes não conferidas, termos não assinados. */
@@ -339,74 +152,101 @@ export function resumoVespera(estados: Estado[], data: string, agora: string): {
   lentesNaoConferidas: { episodioId: string; paciente: string; etapa: string }[]
   termosNaoAssinados: { episodioId: string; paciente: string; status: StatusTcle }[]
 } {
-  return naoImplementado(`resumoVespera(${estados.length}, ${data}, ${agora})`)
-}
-
-export interface Indicador {
-  numero: number
-  nome: string
-  numerador: number | null
-  denominador: number | null
-  valor: number | null // fração 0..1, quando aplicável
-  meta: string
-  observacao?: string // ex.: 'Exige observação direta: registrar manualmente.'
+  return _resumoVespera(estados, data, agora)
 }
 
 /** Indicadores da seção 12 do POP calculados a partir dos episódios do período. */
 export function calcularIndicadores(estados: Estado[], de: string, ate: string): Indicador[] {
-  return naoImplementado(`calcularIndicadores(${estados.length}, ${de}, ${ate})`)
+  return _calcularIndicadores(estados, de, ate)
 }
 
 /** Comparação normalizada de lente (sinal, casa decimal, maiúsculas, espaços). */
 export function compararLente(a: Partial<ValoresLente>, b: Partial<ValoresLente>, campos: CampoLente[]): { confere: boolean; camposDivergentes: CampoLente[] } {
-  return naoImplementado(`compararLente(${Object.keys(a).length}, ${Object.keys(b).length}, ${campos.length})`)
+  return _compararLente(a, b, campos)
 }
 
 // Utilitários puros
 export function validarCpf(cpf: string): boolean {
-  return naoImplementado(`validarCpf(${cpf.length})`)
+  return _validarCpf(cpf)
 }
 export function normalizarCpf(cpf: string): string {
-  return naoImplementado(`normalizarCpf(${cpf.length})`)
+  return _normalizarCpf(cpf)
 }
 export function normalizarNome(nome: string): string {
-  return naoImplementado(`normalizarNome(${nome.length})`)
+  return _normalizarNome(nome)
 }
 /** 0..1. Usado só para alertar homônimo/nome parecido; nunca para unir pessoas. */
 export function similaridadeNomes(a: string, b: string): number {
-  return naoImplementado(`similaridadeNomes(${a.length}, ${b.length})`)
+  return _similaridadeNomes(a, b)
 }
 /** '+21,50 D' (sinal sempre explícito, vírgula decimal, duas casas). */
 export function formatarDioptria(valor: number): string {
-  return naoImplementado(`formatarDioptria(${valor})`)
+  return _formatarDioptria(valor)
 }
 /** Data/hora em America/Sao_Paulo para exibição: 'dd/mm/aaaa' e 'dd/mm/aaaa hh:mm'. */
 export function formatarData(iso: string): string {
-  return naoImplementado(`formatarData(${iso})`)
+  return _formatarData(iso)
 }
 export function formatarDataHora(iso: string): string {
-  return naoImplementado(`formatarDataHora(${iso})`)
+  return _formatarDataHora(iso)
 }
 /** Data local (America/Sao_Paulo) 'aaaa-mm-dd' de um instante ISO. */
 export function dataLocal(iso: string): string {
-  return naoImplementado(`dataLocal(${iso})`)
+  return _dataLocal(iso)
 }
 /** Primeiro nome para os avisos (conteúdo mínimo, briefing §7). */
 export function primeiroNome(nomeCompleto: string): string {
-  return naoImplementado(`primeiroNome(${nomeCompleto.length})`)
+  return _primeiroNome(nomeCompleto)
 }
 /** Máscara de telefone para listas: '(44) 9****-**62'. */
 export function mascararTelefone(telefone: string): string {
-  return naoImplementado(`mascararTelefone(${telefone.length})`)
+  return _mascararTelefone(telefone)
 }
 /** Configuração padrão: sem tempos, sem números clínicos; modelos de etiqueta a partir do POP. */
 export function configPadrao(): ConfigJornada {
-  return naoImplementado('configPadrao')
+  return _configPadrao()
 }
 
 /** Matriz papel × tipo de evento (espelhada na tabela `jornada_cirurgica.permissoes_evento`). */
 export function papeisPermitidosParaEvento(tipo: NovoEvento['tipo'], modelo?: ModeloId | null): Papel[] {
-  return naoImplementado(`papeisPermitidosParaEvento(${tipo}, ${modelo})`)
+  return _papeisPermitidosParaEvento(tipo, modelo)
 }
 
 export type { EstadoMensagem, GatilhoAviso }
+
+// ---------------------------------------------------------------------------
+// Acréscimos (exports novos; não fazem parte do contrato original)
+// ---------------------------------------------------------------------------
+
+export { versoesDosModelos } from './modelos/v1/index.ts'
+export { VERSAO_MODELOS_V1, D7, ITENS_ALERGIA, CP1, CP2, D2, ADM, SI, AN, TO, SO, ALTA } from './modelos/ids.ts'
+export { linhasMatrizPermissoes, PAPEIS_POR_MODELO, PAPEIS_POR_EVENTO, PAPEIS_LEITURA } from './permissoes.ts'
+export { permissoesDoAtor } from './projecao.ts'
+export { normalizarModelo, validadePosterior } from './regras/lente.ts'
+export { LEGENDA_DOTS, TETO_DOTS, textoDot } from './regras/dots.ts'
+export { DEFINICOES_HARD_STOP } from './regras/hardstops.ts'
+export { ALERTAS_HS6, ALERTA_GLP1_PRAZO, ALERTA_QUIZ_OLHO, ALERTA_TEACH_BACK, prazoGlp1Cabe } from './regras/alertas.ts'
+export { TEXTO_HOMONIMO, TEXTO_NOME_PARECIDO, TEXTO_OLHO_UNICO, textoDeficitCognitivo, textoSegundoOlho } from './regras/identificacao.ts'
+export { MODELOS_META, chaveIdempotencia, textoAviso, textoTcleConfirmacao, textoTcleEnvio, textoTcleLembrete } from './mensagens.ts'
+export { eventoMaterialAberto, eventoQuizRespondido, MINIMO_ACERTOS, podeResponderQuiz, proximaAcaoQuiz, questoesErradas } from './quiz.ts'
+export { previaMateriais, situacaoPaginaPaciente } from './paciente-pagina.ts'
+export { preencherModelo } from './etiquetas.ts'
+export { corrigirPaciente } from './abertura.ts'
+export { ROTULO_ETAPA_LENTE } from './resumos.ts'
+export { MODELOS_ETIQUETA_PADRAO, LIMIAR_NOME_PARECIDO_PADRAO } from './config.ts'
+export { telefoneValido } from './util/telefone.ts'
+export { validarData, validarHora, somarDias, diasEntre, proximoDiaUtil, inicioDoDiaLocal, fimDoDiaLocal, horaLocal } from './util/datas.ts'
+
+/** Catálogo dos hard stops (sem estado): para a interface listar o que existe e como resolver. */
+export function catalogoHardStops(): { codigo: string; titulo: string; descricao: string; bloqueia: string[]; resolvivelPor: Papel[]; exigeResolucaoEscrita: boolean; comoResolver: string; fonte: string }[] {
+  return DEFS.map((d) => ({
+    codigo: d.codigo,
+    titulo: d.titulo,
+    descricao: d.descricao,
+    bloqueia: [...d.bloqueia],
+    resolvivelPor: [...d.resolvivelPor],
+    exigeResolucaoEscrita: d.exigeResolucaoEscrita,
+    comoResolver: d.comoResolver,
+    fonte: d.fonte,
+  }))
+}

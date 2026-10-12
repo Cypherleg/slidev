@@ -3,7 +3,7 @@
 
 import type { Estado, Indicador } from './contrato.ts'
 import { interno } from './estado/montar.ts'
-import { RANK } from './estado/consultas.ts'
+import { cicloCp1, RANK } from './estado/consultas.ts'
 import type { CicloLente, EstadoInterno } from './estado/tipos.ts'
 import { dataLocal, somarDias } from './util/datas.ts'
 
@@ -28,8 +28,7 @@ export function calcularIndicadores(estados: Estado[], de: string, ate: string):
   // 3. Dupla conferência: checkpoints 1 e 2 por pessoas diferentes, concluídos antes do D0.
   const dupla = operados.filter((e) => {
     const c = cicloUsado(e)
-    const base = c.herdaCp1De != null ? e.ciclos.find((x) => x.numero === c.herdaCp1De) ?? c : c
-    const cp1 = base.cp1
+    const cp1 = cicloCp1(e, c).cp1
     const cp2 = c.cp2
     const data = e.agenda.dataCirurgia!
     return !!cp1 && !!cp2 && cp1.porId !== cp2.porId && dataLocal(cp1.em) < data && dataLocal(cp2.em) < data

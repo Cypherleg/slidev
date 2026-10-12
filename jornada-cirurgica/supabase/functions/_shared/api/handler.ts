@@ -90,7 +90,11 @@ async function lerCorpo(req: Request, limite: number): Promise<{ texto: string; 
     tudo.set(p, pos)
     pos += p.byteLength
   }
-  return { texto: new TextDecoder('utf-8', { fatal: true }).decode(tudo), bytes: total }
+  try {
+    return { texto: new TextDecoder('utf-8', { fatal: true }).decode(tudo), bytes: total }
+  } catch {
+    throw erro('validacao', 'Corpo com codificação inválida (use UTF-8).')
+  }
 }
 
 const temAcao = (obj: object, acao: string) => Object.prototype.hasOwnProperty.call(obj, acao)
@@ -116,7 +120,11 @@ async function contextoEquipe(deps: DepsApi, req: Request, acao: AcaoEquipe): Pr
     if (cabecalhoAtor) {
       const t = await verificarTokenAtor(deps.config.segredoAtor, cabecalhoAtor, { sessaoUsuarioId: membro.id, aparelhoId }, agora.getTime())
       if (!t) return { tipo: 'ator_invalido' as const }
-      const encerrado = await tx.consulta(`select 1 from ${S}.acessos where recurso = 'ator_encerrado' and sessao_usuario_id = $1::uuid and detalhe->>'jti' = $2 limit 1`, [membro.id, t.jti])
+      // Encerrado no servidor (ator.encerrar)? Janela limitada à validade máxima do token.
+      const encerrado = await tx.consulta(
+        `select 1 from ${S}.acessos where recurso = 'ator_encerrado' and registrado_em > now() - interval '1 day' and sessao_usuario_id = $1::uuid and detalhe->>'jti' = $2 limit 1`,
+        [membro.id, t.jti],
+      )
       if (encerrado.length) return { tipo: 'ator_invalido' as const }
       const outro = t.membroId === membro.id ? membro : await buscarMembro(tx, t.membroId)
       if (!outro || !outro.ativo) return { tipo: 'ator_invalido' as const }

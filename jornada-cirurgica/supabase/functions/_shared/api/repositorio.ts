@@ -638,7 +638,7 @@ export async function idsEpisodios(
     p.push(`%${filtro.termoNormalizado.replace(/[%_\\]/g, m => `\\${m}`)}%`)
     cond.push(`p.nome_normalizado like $${p.length}`)
   }
-  p.push(Math.min(Math.max(filtro.limite ?? 200, 1), 500))
+  p.push(Math.min(Math.max(filtro.limite ?? 200, 1), 5000))
   const r = await tx.consulta(
     `select e.id from ${S}.episodios e join ${S}.pacientes p on p.id = e.paciente_id
      ${cond.length ? `where ${cond.join(' and ')}` : ''}

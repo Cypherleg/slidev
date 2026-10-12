@@ -121,7 +121,7 @@ async function semearCenarios(deps: DepsSemente, passo: (nome: string, fn: () =>
 
   // HOJE: pronto para o dia (D-2 concluído).
   await passo('cenário hoje: pronto para o dia', async () => {
-    const e = await r.abrir(await r.cadastrar(pac(4, 'Paciente Teste Charlie Lima', '1955-12-01')), 'OD', hoje)
+    const e = await r.abrir(await r.cadastrar(pac(4, 'Charlie Teste Lima', '1955-12-01')), 'OD', hoje)
     await r.d7(e, { dataCirurgia: hoje, ordem: 1, horario: '07:00', dioptria: 21.5 })
     await r.cp1(e)
     await r.cp2(e, 21.5)
@@ -130,15 +130,15 @@ async function semearCenarios(deps: DepsSemente, passo: (nome: string, fn: () =>
 
   // HOJE: par de nomes parecidos no mesmo dia (3º identificador exigido).
   await passo('cenário hoje: nomes parecidos', async () => {
-    const e1 = await r.abrir(await r.cadastrar(pac(2, 'Paciente Teste Bravo Souza', '1947-06-30', 'Mae Teste Bravo Um')), 'OE', hoje)
-    const e2 = await r.abrir(await r.cadastrar(pac(3, 'Paciente Teste Bravo Sousa', '1949-09-08', 'Mae Teste Bravo Dois')), 'OD', hoje)
+    const e1 = await r.abrir(await r.cadastrar(pac(2, 'Bravo Teste Souza', '1947-06-30', 'Mae Teste Bravo Um')), 'OE', hoje)
+    const e2 = await r.abrir(await r.cadastrar(pac(3, 'Bravo Teste Sousa', '1949-09-08', 'Mae Teste Bravo Dois')), 'OD', hoje)
     await r.d7(e1, { dataCirurgia: hoje, ordem: 2, horario: '08:00', dioptria: 20.0, sobrepor: { [D7.nomeMae]: 'Mae Teste Bravo Um' } })
     await r.d7(e2, { dataCirurgia: hoje, ordem: 3, horario: '08:30', dioptria: 22.0, sobrepor: { [D7.nomeMae]: 'Mae Teste Bravo Dois' } })
   })
 
   // HOJE: 2º olho (o OD do mesmo paciente foi agendado 30 dias atrás).
   await passo('cenário hoje: segundo olho', async () => {
-    const p = await r.cadastrar(pac(1, 'Paciente Teste Alfa da Silva', '1950-02-14'))
+    const p = await r.cadastrar(pac(1, 'Alfa Teste da Silva', '1950-02-14'))
     const primeiro = await r.abrir(p, 'OD', dataLocalDev(-37), US.cirurgiao2)
     await r.com(primeiro, US.concierge, 'episodio.agendar', { dataCirurgia: dataLocalDev(-30), horario: '07:30', ordem: 1 })
     const segundo = await r.abrir(p, 'OE', hoje, US.cirurgiao2)
@@ -148,14 +148,14 @@ async function semearCenarios(deps: DepsSemente, passo: (nome: string, fn: () =>
 
   // AMANHÃ: aguardando D-2 (D-7 e checkpoint 1 concluídos).
   await passo('cenário amanhã: aguardando D-2', async () => {
-    const e = await r.abrir(await r.cadastrar(pac(5, 'Paciente Teste Delta Rocha', '1946-03-22')), 'OE', amanha)
+    const e = await r.abrir(await r.cadastrar(pac(5, 'Delta Teste Rocha', '1946-03-22')), 'OE', amanha)
     await r.d7(e, { dataCirurgia: amanha, ordem: 1, horario: '07:00', dioptria: 19.5 })
     await r.cp1(e)
   })
 
   // AMANHÃ: lente em quarentena (divergência plantada no checkpoint 2).
   await passo('cenário amanhã: quarentena', async () => {
-    const e = await r.abrir(await r.cadastrar(pac(6, 'Paciente Teste Eco Martins', '1958-08-17')), 'OD', amanha)
+    const e = await r.abrir(await r.cadastrar(pac(6, 'Eco Teste Martins', '1958-08-17')), 'OD', amanha)
     await r.d7(e, { dataCirurgia: amanha, ordem: 2, horario: '07:30', dioptria: 23.0 })
     await r.cp1(e)
     await r.cp2(e, 23.5)
@@ -163,7 +163,7 @@ async function semearCenarios(deps: DepsSemente, passo: (nome: string, fn: () =>
 
   // AMANHÃ: D-7 em andamento (só a identificação respondida).
   await passo('cenário amanhã: D-7 em andamento', async () => {
-    const e = await r.abrir(await r.cadastrar(pac(7, 'Paciente Teste Foxtrot Nunes', '1952-05-05')), 'OD', em7, US.cirurgiao2)
+    const e = await r.abrir(await r.cadastrar(pac(7, 'Foxtrot Teste Nunes', '1952-05-05')), 'OD', em7, US.cirurgiao2)
     await r.com(e, US.concierge, 'episodio.agendar', { dataCirurgia: amanha, horario: '08:30', ordem: 3 })
     await r.responder(e, 'd7', US.concierge, {}, (_item, secao) => secao === 'A')
   })

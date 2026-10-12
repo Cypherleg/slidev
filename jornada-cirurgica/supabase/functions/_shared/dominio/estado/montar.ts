@@ -323,7 +323,7 @@ export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
     case 'quiz.respondido': {
       const t = (d.tentativa && typeof d.tentativa === 'object' ? d.tentativa : d) as QuizTentativa
       const erradas = Array.isArray(d.erradas) ? (d.erradas as number[]) : []
-      est.materiais.quiz.push({ tentativa: { ...t, em: t.em ?? ev.registradoEm }, erradas, em: ev.registradoEm })
+      est.materiais.quiz.push({ tentativa: { ...t, em: t.em || ev.registradoEm }, erradas, em: ev.registradoEm })
       break
     }
     case 'etiqueta.copiada': {
@@ -379,7 +379,7 @@ export function aplicarEvento(est: EstadoInterno, ev: Evento): void {
     default:
       break
   }
-  if (ev.registradoEm > est.ultimoEventoEm) est.ultimoEventoEm = ev.registradoEm
+  if (Date.parse(ev.registradoEm) > Date.parse(est.ultimoEventoEm)) est.ultimoEventoEm = ev.registradoEm
   if (typeof ev.seq === 'number' && ev.seq > est.ultimoSeq) est.ultimoSeq = ev.seq
 }
 
@@ -398,7 +398,7 @@ export function atualizarDerivados(est: EstadoInterno, em: string): void {
 function ordenar(eventos: Evento[]): Evento[] {
   return [...eventos].sort((a, b) => {
     if (a.seq != null && b.seq != null && a.seq !== b.seq) return a.seq - b.seq
-    return a.registradoEm.localeCompare(b.registradoEm)
+    return Date.parse(a.registradoEm) - Date.parse(b.registradoEm)
   })
 }
 

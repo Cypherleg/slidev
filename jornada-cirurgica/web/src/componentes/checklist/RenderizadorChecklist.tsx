@@ -100,7 +100,12 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
   const condicao = (c: CondicaoItem | undefined): CondicaoExibida | null => {
     if (!c) return null
     if ('contexto' in c) {
-      const ativa = c.contexto === 'homonimo_no_dia' ? Boolean(props.contexto?.homonimoNoDia) : c.contexto === 'lente_torica' ? Boolean(props.contexto?.lenteTorica) : Boolean(props.contexto?.dotD)
+      const ativa =
+        c.contexto === 'homonimo_no_dia'
+          ? Boolean(props.contexto?.homonimoNoDia)
+          : c.contexto === 'lente_torica'
+            ? Boolean(props.contexto?.lenteTorica)
+            : Boolean(props.contexto?.dotD)
       return { ...ROTULO_CONTEXTO[c.contexto], ativa }
     }
     const alvo = itemPorId(modelo, c.itemId)
@@ -110,19 +115,25 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
     return { quando: `${nome} for ${rotulos}`, agora: `${nome} é ${rotulos}`, ativa: typeof v === 'string' && c.valores.includes(v) }
   }
 
+  // Bloqueio do checklist inteiro: mostrado uma vez no topo, não repetido em cada item.
+  const bloqueioGlobal = props.somenteLeitura
+    ? props.somenteLeitura
+    : props.permissao && !props.permissao.permitido
+      ? (props.permissao.motivo ?? 'Sem permissão para responder este checklist.')
+      : null
+
   const motivoBloqueio = (item: ItemModelo): string | null => {
-    if (props.somenteLeitura) return props.somenteLeitura
-    if (props.permissao && !props.permissao.permitido) return props.permissao.motivo ?? 'Sem permissão para responder este checklist.'
+    if (bloqueioGlobal) return bloqueioGlobal
     if (!temAlgumPapel(props.papeisAtor, item.papeis)) return `Só ${rotuloPapeis(item.papeis)} responde a este item.`
     const blocosFaltando = (item.exigeBlocosConcluidos ?? []).filter(m => !concluidos.includes(m))
     if (blocosFaltando.length) return `Só depois de concluir: ${blocosFaltando.map(m => ROTULO_MODELO[m] ?? m).join(', ')}.`
+    // Ordem (regra 4): o pré-requisito precisa estar REGISTRADO antes (envio separado); se for sim/não, com "Sim".
     const antes = (item.depoisDe ?? []).filter(id => {
-      if (respostas[id]) return false
-      // No modo por seção, um rascunho válido do item anterior no mesmo lote também vale (o servidor confere a ordem).
-      if (modo === 'secao' && rascunhos[id] && validarValor(itemPorId(modelo, id) ?? item, rascunhos[id].valor) === null) return false
-      return true
+      const r = respostas[id]
+      if (!r) return true
+      return itemPorId(modelo, id)?.tipo === 'sim_nao' && r.valor !== 'sim'
     })
-    if (antes.length) return `Registre antes: ${antes.map(id => textos[id] ?? id).join('; ')}.`
+    if (antes.length) return `Registre antes: ${antes.map(id => (itemPorId(modelo, id)?.tipo === 'sim_nao' ? `${textos[id] ?? id} (com Sim)` : (textos[id] ?? id))).join('; ')}.`
     return null
   }
 
@@ -164,6 +175,11 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
   return (
     <div className="pilha renderizador-checklist" data-modelo={modelo.id}>
       {modelo.descricao && <p className="suave">{modelo.descricao}</p>}
+      {bloqueioGlobal && (
+        <Aviso tipo="atencao" titulo="Não é possível responder agora">
+          {bloqueioGlobal}
+        </Aviso>
+      )}
       <p className="suave" style={{ fontSize: '.85rem' }}>
         Modelo {modelo.titulo} · versão {modelo.versao} · fonte: {modelo.fonte}
       </p>
@@ -191,6 +207,7 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
           valorExibido={valorExibido}
           alterado={alterado}
           motivoBloqueio={motivoBloqueio}
+          bloqueioGlobal={bloqueioGlobal}
           condicao={condicao}
           concluidos={concluidos}
           mudar={mudar}
@@ -217,6 +234,7 @@ function SecaoChecklist(p: {
   valorExibido: (i: ItemModelo) => ValorResposta | undefined
   alterado: (i: ItemModelo) => boolean
   motivoBloqueio: (i: ItemModelo) => string | null
+  bloqueioGlobal: string | null
   condicao: (c: CondicaoItem | undefined) => CondicaoExibida | null
   concluidos: ModeloId[]
   mudar: (i: ItemModelo, r: Rascunho | null) => void
@@ -234,9 +252,15 @@ function SecaoChecklist(p: {
         {secao.id.length <= 3 && !secao.titulo.startsWith(`${secao.id}.`) ? `${secao.id}. ` : ''}
         {secao.titulo}
       </legend>
-      <p className="suave" style={{ margin: 0 }}>
-        {respondidos} de {obrigatorios.length} itens obrigatórios registrados
-      </p>
+      {secao.itens.length === 0 ? (
+        <p className="suave" style={{ margin: 0 }}>
+          Nenhum item definido nesta seção ainda.
+        </p>
+      ) : (
+        <p className="suave" style={{ margin: 0 }}>
+          {respondidos} de {obrigatorios.length} itens obrigatórios registrados
+        </p>
+      )}
       {secao.itens.map(item => {
         const motivo = p.motivoBloqueio(item)
         const erro = p.alterado(item) ? validarValor(item, p.rascunhos[item.id]?.valor) : null
@@ -251,6 +275,7 @@ function SecaoChecklist(p: {
             falta={p.faltam.has(item.id) && !p.alterado(item)}
             alterado={p.alterado(item)}
             bloqueio={motivo}
+            motivoVisivel={motivo !== p.bloqueioGlobal}
             erro={erro}
             condicao={p.condicao(item.exigidoQuando)}
             foraDeHora={item.foraDeHoraApos && p.concluidos.includes(item.foraDeHoraApos) ? item.foraDeHoraApos : null}
@@ -266,23 +291,29 @@ function SecaoChecklist(p: {
           />
         )
       })}
-      <div className="barra-secao">
-        <span className="suave">{alterados.length ? `${alterados.length} ${alterados.length === 1 ? 'resposta não registrada' : 'respostas não registradas'}` : 'Nada a registrar nesta seção'}</span>
-        <Botao
-          onClick={() => void p.enviar(secao.id, secao.itens)}
-          desabilitado={alterados.length === 0 || invalidos.length > 0 || p.salvando !== null}
-          motivo={invalidos.length > 0 ? 'Complete as respostas destacadas antes de registrar.' : null}
-          rotuloAria={`Registrar seção ${secao.titulo}`}
-        >
-          {p.salvando === secao.id
-            ? 'Registrando…'
-            : p.modo === 'imediato'
-              ? alterados.length === 1
-                ? 'Registrar 1 marcação'
-                : `Registrar ${alterados.length} marcações`
-              : `Salvar seção ${secao.id}`}
-        </Botao>
-      </div>
+      {secao.itens.length > 0 && (
+        <div className="barra-secao">
+          <span className="suave">
+            {alterados.length ? `${alterados.length} ${alterados.length === 1 ? 'resposta não registrada' : 'respostas não registradas'}` : 'Nada a registrar nesta seção'}
+          </span>
+          <Botao
+            onClick={() => void p.enviar(secao.id, secao.itens)}
+            desabilitado={alterados.length === 0 || invalidos.length > 0 || p.salvando !== null}
+            motivo={invalidos.length > 0 ? 'Complete as respostas destacadas antes de registrar.' : null}
+            rotuloAria={`Registrar seção ${secao.titulo}`}
+          >
+            {p.salvando === secao.id
+              ? 'Registrando…'
+              : p.modo === 'imediato'
+                ? alterados.length === 0
+                  ? 'Registrar marcações'
+                  : alterados.length === 1
+                    ? 'Registrar 1 marcação'
+                    : `Registrar ${alterados.length} marcações`
+                : `Salvar seção ${secao.id}`}
+          </Botao>
+        </div>
+      )}
     </fieldset>
   )
 }
@@ -296,6 +327,8 @@ export function ItemChecklist(p: {
   falta: boolean
   alterado: boolean
   bloqueio: string | null
+  /** false quando o motivo é do checklist inteiro (já exibido no topo). */
+  motivoVisivel?: boolean
   erro: string | null
   /** `exigidoQuando`: texto da condição e se vale agora. */
   condicao?: CondicaoExibida | null
@@ -337,7 +370,11 @@ export function ItemChecklist(p: {
         <span className="linha" style={{ gap: 6 }}>
           {p.falta && <Selo tipo="perigo">Falta responder</Selo>}
           {p.alterado && <Selo tipo="info">Não registrado</Selo>}
-          {item.hardStop && <Selo tipo="perigo" titulo={item.hardStop}>Hard stop: {ROTULO_HARD_STOP_CURTO[item.hardStop] ?? item.hardStop}</Selo>}
+          {item.hardStop && (
+            <Selo tipo="perigo" titulo={item.hardStop}>
+              Hard stop: {ROTULO_HARD_STOP_CURTO[item.hardStop] ?? item.hardStop}
+            </Selo>
+          )}
         </span>
       </div>
       {p.condicao && (
@@ -389,13 +426,7 @@ export function ItemChecklist(p: {
       {(verObs || observacao) && !desabilitado ? (
         <div className="campo">
           <label htmlFor={`${p.idDom}-observacao`}>Observação</label>
-          <input
-            id={`${p.idDom}-observacao`}
-            type="text"
-            autoComplete="off"
-            value={observacao}
-            onChange={e => p.aoMudar({ valor: p.valor, observacao: e.target.value })}
-          />
+          <input id={`${p.idDom}-observacao`} type="text" autoComplete="off" value={observacao} onChange={e => p.aoMudar({ valor: p.valor, observacao: e.target.value })} />
         </div>
       ) : (
         !desabilitado && (
@@ -411,7 +442,7 @@ export function ItemChecklist(p: {
           {p.erro}
         </p>
       )}
-      {p.bloqueio && (
+      {p.bloqueio && p.motivoVisivel !== false && (
         <p className="motivo-bloqueio" style={{ margin: 0 }}>
           {p.bloqueio}
         </p>
@@ -421,7 +452,11 @@ export function ItemChecklist(p: {
           <span>
             Registrado por <strong>{resposta.autorNome}</strong> em {formatarDataHora(resposta.registradoEm)}
           </span>
-          {resposta.foraDeHora && <Selo tipo="atencao" titulo="Marcação feita fora de hora: fica com o horário real e sinalizada.">FORA DE HORA</Selo>}
+          {resposta.foraDeHora && (
+            <Selo tipo="atencao" titulo="Marcação feita fora de hora: fica com o horário real e sinalizada.">
+              FORA DE HORA
+            </Selo>
+          )}
           {resposta.correcoes > 0 && <Selo tipo="neutro">{resposta.correcoes === 1 ? '1 correção' : `${resposta.correcoes} correções`}</Selo>}
           {resposta.observacao && <span>Obs.: {resposta.observacao}</span>}
         </div>

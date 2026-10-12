@@ -24,9 +24,9 @@ export interface RegistroFicticio {
 
 /** CPFs de teste (prefixo 900, dígitos válidos) → cadastro fictício. */
 export const CADASTROS_FICTICIOS: Record<string, RegistroFicticio> = {
-  [cpfFicticio(101)]: { id: 'DS-FIC-101', nome: 'Paciente Teste Golf Pereira', nascimento: '12/04/1948', prontuario: 'FIC-101', celulares: ['(00) 90000-0101'] },
-  [cpfFicticio(102)]: { id: 'DS-FIC-102', nome: 'Paciente Teste Hotel Ramos', nascimento: '03/11/1952' },
-  [cpfFicticio(104)]: { id: 'DS-FIC-104', nome: 'Paciente Teste India Campos', nascimento: '21/07/1944', prontuario: 'FIC-104', celulares: ['(00) 90000-0104', '(00) 3000-0104'] },
+  [cpfFicticio(101)]: { id: 'DS-FIC-101', nome: 'Golf Teste Pereira', nascimento: '12/04/1948', prontuario: 'FIC-101', celulares: ['(00) 90000-0101'] },
+  [cpfFicticio(102)]: { id: 'DS-FIC-102', nome: 'Hotel Teste Ramos', nascimento: '03/11/1952' },
+  [cpfFicticio(104)]: { id: 'DS-FIC-104', nome: 'India Teste Campos', nascimento: '21/07/1944', prontuario: 'FIC-104', celulares: ['(00) 90000-0104', '(00) 3000-0104'] },
 }
 
 /** Este CPF simula Datasigh fora do ar (demora mais que o timeout). */

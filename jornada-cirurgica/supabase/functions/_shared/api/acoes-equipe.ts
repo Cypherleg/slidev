@@ -9,10 +9,7 @@ import {
   calcularIndicadores,
   configPadrao,
   dataLocal,
-  decidir,
-  ErroDominio,
   gerarEtiquetas,
-  mascararTelefone,
   montarEstado,
   normalizarCpf,
   normalizarNome,
@@ -21,6 +18,7 @@ import {
   PAPEIS,
   papeisPermitidosParaEvento,
   pendenciasDoEpisodio,
+  previaMateriais,
   resumoDia,
   resumoVespera,
   validarCpf,
@@ -76,7 +74,6 @@ import {
   mensagensDosEpisodios,
   mensagemPublica,
   modelosAtivos,
-  novoCache,
   pinHashDoMembro,
   registrarAcesso,
   registrarAparelho,
@@ -709,23 +706,16 @@ export const acoesEquipe: Impl = {
       const entrada = await carregarEntrada(tx, episodioId, { tipo: 'completo' })
       if (!entrada) throw erro('nao_encontrado')
       const materiais = await materiaisCatalogo(tx, true)
-      const estado = montarEstado(entrada)
-      const expiraEm = new Date(ctx.agora.getTime() + cfg.linkValidadeDias * 86400_000).toISOString()
-      let mensagens: { gatilho: string; destinoMascarado: string; texto: string }[] = []
-      const impedimentos: string[] = []
-      let usados = materiais
-      try {
-        const r = decidir(estado, { tipo: 'materiais.enviar', tokenLink: '[link-gerado-no-envio]', expiraEm, materiais }, contextoDecisao(ctx, entrada.config))
-        mensagens = r.mensagens.map(m => ({ gatilho: m.gatilho, destinoMascarado: m.telefone ? mascararTelefone(m.telefone) : '', texto: m.texto }))
-        const ids = new Set(r.eventos.map(e => (e.dados as { materialId?: unknown }).materialId).filter((x): x is string => typeof x === 'string'))
-        if (ids.size) usados = materiais.filter(m => ids.has(m.id))
-      } catch (e) {
-        if (!(e instanceof ErroDominio) || e.codigo === 'NAO_IMPLEMENTADO') throw e
-        impedimentos.push(e.message)
-      }
+      // O domínio monta a prévia (textos e destinatários mascarados) sem gravar nada.
+      const previa = previaMateriais(montarEstado(entrada), materiais, {
+        config: entrada.config,
+        envioHabilitado: cfg.envioHabilitado,
+        ...(cfg.urlPaginaPaciente ? { urlPaginaPaciente: cfg.urlPaginaPaciente } : {}),
+        ator: ctx.ator,
+      })
       await comoApi(tx, atorDb(ctx))
       await registrarAcesso(tx, atorDb(ctx), 'materiais_previa', { episodioId, pacienteId: entrada.paciente.id })
-      return { mensagens, materiais: usados, modoEnvio: cfg.envioHabilitado ? ('real' as const) : ('ensaio' as const), impedimentos }
+      return previa
     })
   },
 
@@ -899,7 +889,7 @@ export const acoesEquipe: Impl = {
     if (de > ate) throw erro('validacao', 'Período inválido.')
     return ctx.deps.db.transacao(async tx => {
       await comoSistema(tx)
-      const ids = await idsEpisodios(tx, { de, ate, limite: 500 })
+      const ids = await idsEpisodios(tx, { de, ate, limite: 5000 })
       const estados = await estadosCompletos(tx, ids)
       const r = calcularIndicadores(
         estados.map(e => e.estado),
@@ -1108,7 +1098,7 @@ export const acoesEquipe: Impl = {
       await comoApi(tx, atorDb(ctx))
       for (const [chave, valor] of Object.entries(parcial)) {
         await tx.consulta(
-          `insert into ${S}.config (chave, valor, atualizado_em, atualizado_por) values ($1, $2::jsonb, now(), $3::uuid)
+          `insert into ${S}.config (chave, valor, atualizado_em, atualizado_por) values ($1, coalesce($2::jsonb, 'null'::jsonb), now(), $3::uuid)
            on conflict (chave) do update set valor = excluded.valor, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por`,
           [chave, valor, ctx.ator.id],
         )

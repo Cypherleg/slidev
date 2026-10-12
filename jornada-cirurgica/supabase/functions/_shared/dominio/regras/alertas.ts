@@ -170,7 +170,7 @@ export function alertasDoEstado(est: EstadoInterno, incluirInativos = false): Al
     if (cond) base.conduta = { texto: cond.texto, cirurgiaoId: cond.cirurgiaoId, cirurgiaoNome: nomeMembro(est, cond.cirurgiaoId), em: cond.em }
     r.push(base)
   }
-  return r.sort((x, y) => x.geradoEm.localeCompare(y.geradoEm) || x.id.localeCompare(y.id))
+  return r.sort((x, y) => Date.parse(x.geradoEm) - Date.parse(y.geradoEm) || x.id.localeCompare(y.id))
 }
 
 function origemDoId(id: string): Alerta['origem'] {

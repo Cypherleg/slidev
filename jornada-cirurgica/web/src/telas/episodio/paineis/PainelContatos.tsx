@@ -71,10 +71,7 @@ export function PainelContatos(props: PropsPainel) {
                 <p className="linha" style={{ margin: 0, gap: 6 }}>
                   {c.anuenciaPaciente ? <Selo tipo="ok">Anuência do paciente registrada</Selo> : <Selo tipo="atencao">Sem anuência do paciente</Selo>}
                   {c.confirmadoEm ? (
-                    <Selo tipo="ok">
-                      Número confirmado por resposta em {formatarDataHora(c.confirmadoEm)}
-                      {c.confirmadoPor ? ` (${c.confirmadoPor})` : ''}
-                    </Selo>
+                    <Selo tipo="ok">Número confirmado por resposta em {formatarDataHora(c.confirmadoEm)}</Selo>
                   ) : (
                     c.telefone && <Selo tipo="atencao">Número ainda não confirmado</Selo>
                   )}

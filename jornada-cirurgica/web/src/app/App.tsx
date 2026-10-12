@@ -1,4 +1,6 @@
-// Casca + roteador (react-router v7). A página do paciente (/p/:token) fica fora da casca e sem login.
+// Casca + roteador (react-router v7).
+// Fora da casca e sem login: a página do paciente (/p/:token, sem nem o provedor de sessão) e os checklists
+// em branco (/impressao/branco/:modelo, contingência em papel). O registro preenchido (/impressao/episodio/:id) exige sessão.
 import { lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { BrowserRouter, Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
@@ -111,6 +113,15 @@ export default function App() {
           />
           <Route element={<ComSessao />}>
             <Route path={PADROES.entrar} element={<Entrar />} />
+            {/* Contingência em papel (regra 12): abre sem sessão e com o servidor fora; não mostra dado de paciente. */}
+            <Route
+              path={PADROES.impressaoBranco}
+              element={
+                <SobDemanda>
+                  <ImpressaoBranco />
+                </SobDemanda>
+              }
+            />
             <Route
               element={
                 <ExigeSessao>
@@ -154,14 +165,6 @@ export default function App() {
                 element={
                   <SobDemanda>
                     <ImpressaoEpisodio />
-                  </SobDemanda>
-                }
-              />
-              <Route
-                path={PADROES.impressaoBranco}
-                element={
-                  <SobDemanda>
-                    <ImpressaoBranco />
                   </SobDemanda>
                 }
               />
