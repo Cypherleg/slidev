@@ -217,12 +217,19 @@ function validarModelo(x: unknown): ModeloChecklist {
   return m
 }
 
-function proximaVersao(existentes: string[]): string {
-  if (!existentes.length) return 'v1'
-  const ultima = existentes[existentes.length - 1]
-  const m = /^(.*?)(\d+)$/.exec(ultima)
-  let candidata = m ? `${m[1]}${Number(m[2]) + 1}` : `${ultima}/2`
-  while (existentes.includes(candidata)) candidata = `${candidata}.1`
+/**
+ * Versão publicada pela gestora: `<versão ativa sem sufixo>+gestora.<n>`. O sufixo nunca colide com uma
+ * versão padrão futura do código (ex.: pop-0.4/3), que a semeadura grava quando não existe na tabela.
+ */
+function proximaVersao(ativa: string | null, existentes: string[]): string {
+  const base = (ativa ?? 'v').replace(/\+gestora\.\d+$/, '')
+  let n = 1
+  for (const v of existentes) {
+    const m = /\+gestora\.(\d+)$/.exec(v)
+    if (m) n = Math.max(n, Number(m[1]) + 1)
+  }
+  let candidata = `${base}+gestora.${n}`
+  while (existentes.includes(candidata)) candidata = `${base}+gestora.${++n}`
   return candidata
 }
 
@@ -499,9 +506,9 @@ export const acoesEquipe: Impl = {
     const tipoLente = v.texto(d.tipoLente, 'tipoLente', { max: 200 })
     const dataSugerida = v.dataOpcional(d.dataSugerida, 'dataSugerida')
     return ctx.deps.db.transacao(async tx => {
-      const modelos = await modelosAtivos(tx) // deixa em jornada_sistema
-      const versoesModelos = Object.fromEntries(Object.values(modelos).map(m => [m.id, m.versao])) as Record<ModeloId, string>
       const config = await lerConfigJornada(tx)
+      const modelos = await modelosAtivos(tx, config) // deixa em jornada_sistema
+      const versoesModelos = Object.fromEntries(Object.values(modelos).map(m => [m.id, m.versao])) as Record<ModeloId, string>
       const paciente = await buscarPaciente(tx, pacienteId)
       if (!paciente) throw erro('nao_encontrado')
       const cirurgiao = await buscarMembro(tx, cirurgiaoId)
@@ -797,7 +804,8 @@ export const acoesEquipe: Impl = {
 
   async 'intercorrencia.registrar'(ctx, d) {
     const descricao = v.texto(d.descricao, 'descricao', { max: 4000 })
-    return executarComando(ctx, v.uuid(d.episodioId, 'episodioId'), versao(d), () => ({ tipo: 'intercorrencia.registrar', descricao }))
+    const neverEvent = d.neverEvent === undefined || d.neverEvent === null ? null : v.umDe(d.neverEvent, 'neverEvent', ['olho_errado', 'paciente_errado', 'lio_errada'] as const)
+    return executarComando(ctx, v.uuid(d.episodioId, 'episodioId'), versao(d), () => ({ tipo: 'intercorrencia.registrar', descricao, ...(neverEvent ? { neverEvent } : {}) }))
   },
 
   async 'episodio.suspender'(ctx, d) {
@@ -826,7 +834,13 @@ export const acoesEquipe: Impl = {
   },
 
   async 'quase_evento.registrar'(ctx, d) {
-    const cmd: Comando = { tipo: 'quase_evento.registrar', etapa: v.umDe(d.etapa, 'etapa', ['chegada', 'd2', 'd0'] as const), descricao: v.texto(d.descricao, 'descricao', { max: 4000 }) }
+    const categoria = d.categoria === undefined || d.categoria === null ? null : v.umDe(d.categoria, 'categoria', ['identidade', 'olho', 'lio', 'outro'] as const)
+    const cmd: Comando = {
+      tipo: 'quase_evento.registrar',
+      etapa: v.umDe(d.etapa, 'etapa', ['chegada', 'd2', 'd0'] as const),
+      descricao: v.texto(d.descricao, 'descricao', { max: 4000 }),
+      ...(categoria ? { categoria } : {}),
+    }
     return executarComando(ctx, v.uuid(d.episodioId, 'episodioId'), versao(d), () => cmd)
   },
 
@@ -1084,9 +1098,9 @@ export const acoesEquipe: Impl = {
     exigirGestora(ctx)
     const modelo = validarModelo(d.modelo)
     return ctx.deps.db.transacao(async tx => {
-      await modelosAtivos(tx)
+      const ativos = await modelosAtivos(tx)
       const existentes = (await listarModelos(tx)).filter(m => m.id === modelo.id).map(m => m.versao)
-      const nova = proximaVersao(existentes)
+      const nova = proximaVersao(ativos[modelo.id]?.versao ?? null, existentes)
       await comoApi(tx, atorDb(ctx))
       await tx.consulta(`insert into ${S}.modelos_checklist (id, versao, conteudo, publicado_por) values ($1, $2, $3::jsonb, $4::uuid)`, [modelo.id, nova, { ...modelo, versao: nova }, ctx.ator.id])
       await inserirEventos(tx, [eventoSemEpisodio(ctx, 'modelo.publicado', { modelo: modelo.id, versao: nova })], null)

@@ -61,6 +61,7 @@ export function montarHistorico(v: EpisodioVisao): ItemHistorico[] {
   for (const m of v.materiais.enviados) itens.push({ em: m.em, titulo: `Material: ${m.titulo} (versão ${m.versao})`, detalhe: ROTULO_ESTADO_MENSAGEM[m.estado], tipo: 'material' })
   if (v.materiais.abertoEm) itens.push({ em: v.materiais.abertoEm, titulo: 'Página do paciente aberta', tipo: 'material' })
   for (const q of v.materiais.quiz) itens.push({ em: q.em, titulo: `Quiz: ${q.aprovado ? 'aprovado' : 'reprovado'} (${q.acertos} de 11)`, tipo: 'material' })
+  for (const h of v.hardStopsResolvidos ?? []) itens.push({ em: h.em, titulo: `Hard stop resolvido por escrito: ${h.titulo}`, quem: h.porNome, detalhe: h.resolucao, tipo: 'bloco' })
   for (const i of v.intercorrencias) itens.push({ em: i.em, titulo: 'Intercorrência registrada', quem: i.porNome, detalhe: i.descricao, tipo: 'intercorrencia' })
   for (const m of v.avisosFamilia.mensagens) itens.push({ em: m.criadoEm, titulo: `Aviso: ${rotuloGatilho(m.gatilho)}`, detalhe: `${m.destinoMascarado} · ${ROTULO_ESTADO_MENSAGEM[m.estado] ?? m.estado}`, tipo: 'aviso' })
   return itens.filter(i => i.em).sort((a, b) => a.em.localeCompare(b.em))

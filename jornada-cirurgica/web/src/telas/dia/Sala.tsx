@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router'
-import type { CausaCancelamento } from '@dominio/index.ts'
+import type { CategoriaQuaseEvento, CausaCancelamento, NeverEvent } from '@dominio/index.ts'
 import type { ModeloId, Papel } from '@dominio/tipos.ts'
 import { chamar } from '../../api/cliente.ts'
 import { useSessao } from '../../app/sessao.tsx'
@@ -20,7 +20,16 @@ import { ResultadoComparacao } from '../../componentes/lente/ValoresLenteExibica
 import { permissao, permissaoConcluir, permissaoDoServidor } from '../../componentes/permissoes.ts'
 import type { ResultadoPin } from '../../componentes/pin/TrocaPin.tsx'
 import { TrocaPin } from '../../componentes/pin/TrocaPin.tsx'
-import { BLOCOS_SALA, ROTULO_CAUSA, ROTULO_ESTADO_MENSAGEM, ROTULO_MODELO, rotuloGatilho, rotuloPapeis } from '../../componentes/rotulos.ts'
+import {
+  BLOCOS_SALA,
+  ROTULO_CATEGORIA_QUASE_EVENTO,
+  ROTULO_CAUSA,
+  ROTULO_ESTADO_MENSAGEM,
+  ROTULO_MODELO,
+  ROTULO_NEVER_EVENT,
+  rotuloGatilho,
+  rotuloPapeis,
+} from '../../componentes/rotulos.ts'
 import { ROTAS } from '../../rotas.ts'
 import { mensagemErroCarga } from '../episodio/Episodio.tsx'
 import type { PropsPainel } from '../episodio/paineis/comum.tsx'
@@ -156,6 +165,7 @@ function BlocoSala(props: PropsPainel & { modelo: ModeloId }) {
       {modelo === 'sign_in' && <p style={{ margin: 0, fontWeight: 700 }}>Antes de midriático, bloqueio ou sedação. Marcação do sítio pelo cirurgião antes do midriático.</p>}
       {modelo === 'time_out' && <p style={{ margin: 0, fontWeight: 700 }}>Antes da incisão: todos param. A circulante lê; o cirurgião confirma em voz alta.</p>}
       {modelo === 'sign_out' && <p style={{ margin: 0, fontWeight: 700 }}>Antes de sair da sala.</p>}
+      {modelo === 'time_out' && <VerbalizacaoTimeOut visao={visao} />}
       {modelo === 'time_out' && <LeituraLenteTimeOut {...props} />}
       <ChecklistDoBloco {...props} modelo={modelo} modo="imediato" semConcluir={Boolean(m.exigeLeituraEmVozAlta)} />
       {m.exigeLeituraEmVozAlta && b.situacao !== 'concluido' && <LeituraEmVozAlta {...props} modelo={modelo} />}
@@ -163,6 +173,34 @@ function BlocoSala(props: PropsPainel & { modelo: ModeloId }) {
         Regra de ouro: qualquer membro da equipe pode interromper. Item não conferido não é marcado "depois".
       </p>
     </Cartao>
+  )
+}
+
+/** POP §2 regra 4 e §9.C: alergias, α-bloqueador e anticoagulação verbalizados no Time Out para TODO paciente, mesmo que negativos. */
+export function VerbalizacaoTimeOut(props: { visao: PropsPainel['visao'] }) {
+  const v = props.visao.verbalizacaoTimeOut
+  return (
+    <section className="verbalizacao-time-out" aria-labelledby="titulo-verbalizacao">
+      <h3 id="titulo-verbalizacao">Ler em voz alta para TODO paciente, mesmo que negativo</h3>
+      {v ? (
+        <dl>
+          <div>
+            <dt>Alergias</dt>
+            <dd>{v.alergias.length ? v.alergias.join('; ') : 'Nenhuma alergia registrada'}</dd>
+          </div>
+          <div>
+            <dt>α-bloqueador</dt>
+            <dd>{v.alfaBloqueador}</dd>
+          </div>
+          <div>
+            <dt>Anticoagulação</dt>
+            <dd>{v.anticoagulacao}</dd>
+          </div>
+        </dl>
+      ) : (
+        <p style={{ margin: 0 }}>Alergias, α-bloqueador e anticoagulação: ler da ficha e da admissão (o painel não enviou o resumo).</p>
+      )}
+    </section>
   )
 }
 
@@ -357,6 +395,8 @@ function OcorrenciasSala(props: PropsPainel) {
   const [texto, setTexto] = useState('')
   const [causa, setCausa] = useState<CausaCancelamento | ''>('')
   const [evitavel, setEvitavel] = useState<'sim' | 'nao' | 'nao_sei' | null>(null)
+  const [categoria, setCategoria] = useState<CategoriaQuaseEvento | ''>('')
+  const [neverEvent, setNeverEvent] = useState<NeverEvent | ''>('')
   const pInter = permissao(visao, papeis, 'intercorrencia.registrar')
   const pQuase = permissao(visao, papeis, 'quase_evento.registrar')
   const pSusp = permissao(visao, papeis, 'episodio.suspender')
@@ -367,13 +407,16 @@ function OcorrenciasSala(props: PropsPainel) {
     setTexto('')
     setCausa('')
     setEvitavel(null)
+    setCategoria('')
+    setNeverEvent('')
   }
   const enviar = async () => {
     const t = texto.trim()
     if (t.length < 3) return
     let ok = false
-    if (modo === 'intercorrencia') ok = await ctl.executar('intercorrencia.registrar', { descricao: t }, 'Intercorrência registrada: avisos automáticos suspensos')
-    if (modo === 'quase_evento') ok = await ctl.executar('quase_evento.registrar', { etapa: 'd0', descricao: t }, 'Quase-evento registrado')
+    if (modo === 'intercorrencia')
+      ok = await ctl.executar('intercorrencia.registrar', { descricao: t, neverEvent: neverEvent || null }, 'Intercorrência registrada: avisos automáticos suspensos')
+    if (modo === 'quase_evento') ok = await ctl.executar('quase_evento.registrar', { etapa: 'd0', descricao: t, categoria: categoria || null }, 'Quase-evento registrado')
     if (modo === 'suspender' || modo === 'cancelar') {
       if (!evitavel) return
       const dados = { motivo: t, causa: causa || null, evitavel: evitavel === 'nao_sei' ? null : evitavel === 'sim' }
@@ -420,6 +463,30 @@ function OcorrenciasSala(props: PropsPainel) {
             {modo === 'intercorrencia' ? 'Intercorrência' : modo === 'quase_evento' ? 'Quase-evento (divergência detectada antes de atingir o paciente)' : modo === 'suspender' ? 'Suspender o episódio' : 'Cancelar a cirurgia'}
           </h3>
           {modo === 'intercorrencia' && <Aviso tipo="atencao">Com intercorrência registrada, nenhuma mensagem automática sai para a família.</Aviso>}
+          {modo === 'quase_evento' && (
+            <Campo rotulo="Categoria (o indicador de divergências interceptadas conta identidade, olho e LIO)" id="ocorrencia-categoria">
+              <select id="ocorrencia-categoria" value={categoria} onChange={e => setCategoria(e.target.value as CategoriaQuaseEvento | '')}>
+                <option value="">Não informada</option>
+                {(Object.keys(ROTULO_CATEGORIA_QUASE_EVENTO) as CategoriaQuaseEvento[]).map(c => (
+                  <option key={c} value={c}>
+                    {ROTULO_CATEGORIA_QUASE_EVENTO[c]}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
+          {modo === 'intercorrencia' && (
+            <Campo rotulo="É um never event? (comunicado ao diretor técnico no mesmo dia; a família é informada pelo cirurgião)" id="ocorrencia-never">
+              <select id="ocorrencia-never" value={neverEvent} onChange={e => setNeverEvent(e.target.value as NeverEvent | '')}>
+                <option value="">Não</option>
+                {(Object.keys(ROTULO_NEVER_EVENT) as NeverEvent[]).map(n => (
+                  <option key={n} value={n}>
+                    {ROTULO_NEVER_EVENT[n]}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
           <Campo rotulo={modo === 'suspender' || modo === 'cancelar' ? 'Motivo' : 'Descrição'} id="ocorrencia-texto">
             <textarea id="ocorrencia-texto" rows={3} value={texto} onChange={e => setTexto(e.target.value)} />
           </Campo>

@@ -38,13 +38,16 @@ export function Botao(props: {
       {props.children}
     </button>
   )
-  if (props.desabilitado && props.motivo) {
+  // Com a prop `motivo` (mesmo nula), a estrutura do DOM fica estável: o botão não é recriado ao habilitar.
+  if (props.motivo !== undefined) {
     return (
       <span className="botao-com-motivo">
         {botao}
-        <span className="motivo-bloqueio" id={idMotivo}>
-          {props.motivo}
-        </span>
+        {props.desabilitado && props.motivo && (
+          <span className="motivo-bloqueio" id={idMotivo}>
+            {props.motivo}
+          </span>
+        )}
       </span>
     )
   }

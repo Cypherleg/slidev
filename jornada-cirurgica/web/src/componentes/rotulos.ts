@@ -1,5 +1,5 @@
 // Rótulos de exibição (português do Brasil). Os valores fechados vêm do domínio.
-import type { CausaCancelamento } from '@dominio/index.ts'
+import type { CategoriaQuaseEvento, CausaCancelamento, NeverEvent } from '@dominio/index.ts'
 import type {
   CampoLente,
   CodigoHardStop,
@@ -125,6 +125,19 @@ export const ROTULO_CAUSA: Record<CausaCancelamento, string> = {
   outra: 'Outra',
 }
 
+export const ROTULO_CATEGORIA_QUASE_EVENTO: Record<CategoriaQuaseEvento, string> = {
+  identidade: 'Identidade do paciente',
+  olho: 'Olho',
+  lio: 'LIO (lente)',
+  outro: 'Outro',
+}
+
+export const ROTULO_NEVER_EVENT: Record<NeverEvent, string> = {
+  olho_errado: 'Sim: olho errado',
+  paciente_errado: 'Sim: paciente errado',
+  lio_errada: 'Sim: LIO errada implantada',
+}
+
 export const ROTULO_TEACH_BACK: Record<'adequado_primeira' | 'apos_reorientacao' | 'inadequado', string> = {
   adequado_primeira: 'Adequado de primeira',
   apos_reorientacao: 'Adequado após reorientação',
@@ -147,7 +160,7 @@ export const ROTULO_HARD_STOP_CURTO: Record<CodigoHardStop, string> = {
   HS7_OLHO_VERMELHO: 'Olho vermelho não avaliado',
   HS8_TROCA_LIO_D0: 'Troca de LIO no D0',
   HS9_SITIO_NAO_MARCADO: 'Sítio não marcado',
-  HS_LIO_TIME_OUT: 'Divergência da LIO no Time Out',
+  HS_LIO_TIME_OUT: 'Divergência no Time Out',
   HS_HOMONIMO_NOME_MAE: 'Homônimo: falta o nome da mãe',
   HS_ORDEM_SIGN_IN: 'Ordem do Sign In',
   HS_LIO_SEM_DUPLA_CONFERENCIA: 'LIO sem dupla conferência',

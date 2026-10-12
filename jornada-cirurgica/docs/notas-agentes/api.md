@@ -181,6 +181,26 @@ Cada item tem teste em `tests/api/revisao-seguranca.test.ts` que falhava antes e
    - Página do paciente (sem login): lê no máximo 256 KB.
    - Consequência: requisição sem credencial não informa mais a ação no log (`acao = '-'`).
 
+## 7.2 Ligação da revisão de fidelidade do domínio (modelos `pop-0.4/2`)
+
+Testes: `tests/api/fidelidade.test.ts` (5) e os fluxos existentes (D-7 → alta) com os itens novos.
+
+1. **`dev/preencher.ts`**:
+   - `ADM.jejum` e `ADM.alergias` entraram em `SIM_SEGURO`, junto com `ADM.tcleOlho` e `TO.procedimento`; identificação `opcao` com "sim" exigido → "sim"; acompanhante reserva "registrado" (com a pessoa); 2º olho com a data do 1º (`identificacao.segundoOlho.dataPrimeiro`).
+   - Itens condicionais (`exigidoQuando`) só são respondidos quando a condição vale, inclusive entre modelos (`'d7:C.olho_unico_qual'`); opcionais sem condição ficam em branco.
+   - `dev/roteiro.ts` comunica os ALERTAS ao cirurgião (e registra a conduta) antes de marcar "alertas comunicados". "Conduta presente" no Sign In só com alerta do HS6.
+   - Olho único percorre D-7 → alta, com o preceptor no Time Out.
+2. **Contrato da API** (acréscimos opcionais, repassados ao `Comando` do domínio):
+   - `quase_evento.registrar.categoria` ('identidade' | 'olho' | 'lio' | 'outro');
+   - `intercorrencia.registrar.neverEvent` ('olho_errado' | 'paciente_errado' | 'lio_errada');
+   - `materiais.previa` devolve também `avisos` (de `previaMateriais`, ex.: TCLE retido).
+3. **Semeadura de modelos**:
+   - Se a versão padrão do código (`modelosPadrao(config)`, a mesma de `versoesDosModelos`, com os itens extras de anestesia da config) não está na tabela, é gravada como `jornada_sistema` (`publicado_por` nulo).
+   - A ativa de cada modelo é a publicada mais recentemente, pela gestora ou pelo sistema. Bancos com `pop-0.4/1` recebem a `/2` na primeira leitura de modelos ou abertura de episódio.
+   - Episódios mantêm a versão que guardaram: o conteúdo antigo continua na tabela; sem a linha, o padrão em memória da mesma versão é usado.
+   - A publicação da gestora agora gera `<ativa>+gestora.<n>`, um sufixo que nunca colide com uma versão padrão futura do código (ex.: `pop-0.4/3`).
+4. **`G.materiais = enviados`**: o domínio já impõe — exige um `material.enviado` com `mensagemId` (envio só de preparo, com TCLE retido, não conta → `ordem`). A API não acrescenta regra; o teste confere pela API. Sem texto aprovado para envio só de preparo, nenhuma mensagem é gerada (pergunta P6 do domínio).
+
 ## 8. Pendências
 
 - **Datasigh**: documentação do fornecedor (busca por CPF, campos, autenticação). Configurar `DATASIGH_*`; nada a mudar no código se o formato couber no mapa de campos.
@@ -208,8 +228,8 @@ Cada item tem teste em `tests/api/revisao-seguranca.test.ts` que falhava antes e
 
 ## 10. Estado dos testes (12/10/2026, domínio já implementado)
 
-- `npx vitest run tests/api`: **88 testes passando** em 8 arquivos (inclui `revisao-seguranca`, 18 testes) — `infra` (29, sem banco: criptografia, PIN, tokens, autenticação de produção e dev, Datasigh só GET, anexos, configuração, rotas, CORS, cabeçalhos, limites, mapeamento de erros), `sessao` (10: inscrição por convite, MFA, PIN, ator, encerrar, bloqueio, limites do corpo autenticado), `cpf` (5: HMAC, CPF ausente do banco e dos logs, limite por login, Datasigh só GET, sem união por nome), `matriz` (2: `papeisPermitidosParaEvento` = `permissoes_evento`), `fluxo` (14: D-7, PIN, conflito de versão, conferência cega por TODAS as ações de leitura com controle positivo, autora e leitora do checkpoint 1 recusadas, quarentena, hard stop, sequência completa de avisos em ensaio, intercorrência sem avisos, página do paciente, CORS), `fila` (5: cliente Meta, enviado/falhou/desconhecido, sem reenvio, ensaio intocado, cancelamento por avisos suspensos), `gestao` (5: semeadura dos modelos como sistema, publicação versionada, config, materiais, membros), `revisao-seguranca` (18: itens 1 a 8 da §7.1).
-- Suíte inteira (`npx vitest run`): passando junto com os testes do banco e da interface (rodada três vezes seguidas sem falha nos arquivos da API). Na rodada das correções de segurança, 3 testes de `tests/dominio` falharam por uma troca de versão dos modelos (`pop-0.4/2`) que o agente domínio fazia em paralelo; não envolvem a API.
+- `npx vitest run tests/api`: **93 testes passando** em 9 arquivos (inclui `revisao-seguranca`, 18, e `fidelidade`, 5) — `infra` (29, sem banco: criptografia, PIN, tokens, autenticação de produção e dev, Datasigh só GET, anexos, configuração, rotas, CORS, cabeçalhos, limites, mapeamento de erros), `sessao` (10: inscrição por convite, MFA, PIN, ator, encerrar, bloqueio, limites do corpo autenticado), `cpf` (5: HMAC, CPF ausente do banco e dos logs, limite por login, Datasigh só GET, sem união por nome), `matriz` (2: `papeisPermitidosParaEvento` = `permissoes_evento`), `fluxo` (14: D-7, PIN, conflito de versão, conferência cega por TODAS as ações de leitura com controle positivo, autora e leitora do checkpoint 1 recusadas, quarentena, hard stop, sequência completa de avisos em ensaio, intercorrência sem avisos, página do paciente, CORS), `fila` (5: cliente Meta, enviado/falhou/desconhecido, sem reenvio, ensaio intocado, cancelamento por avisos suspensos), `gestao` (5: semeadura dos modelos como sistema, publicação versionada, config, materiais, membros), `revisao-seguranca` (18: itens 1 a 8 da §7.1).
+- Suíte inteira (`npx vitest run`): passando junto com os testes do banco e da interface (rodada três vezes seguidas sem falha nos arquivos da API). Depois da ligação da revisão de fidelidade: `npx vitest run` inteiro com 419 testes passando (35 arquivos).
 - Correções de segurança: `npx tsc -p tsconfig.json --noEmit` sem erros, `npx vite build --config web/vite.config.ts` ok, `npx playwright test` 5/5 e testes de `web/src` passando.
 - `npx tsc -p tsconfig.json --noEmit`: nenhum erro em `supabase/functions/_shared/api`, `dev/` e `tests/api`. Pontos de entrada Deno conferidos com tsconfig à parte (tipos simulados de `Deno` e `npm:postgres`).
 - Servidor local conferido em banco e porta separados (semente completa, Datasigh fictício encontrado/indisponível, página do paciente por `/dev/links`); banco de conferência apagado depois.

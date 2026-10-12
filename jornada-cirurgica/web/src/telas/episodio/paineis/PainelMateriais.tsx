@@ -115,6 +115,15 @@ export function PainelMateriais(props: PropsPainel & { destacar?: boolean }) {
               </ul>
             </Aviso>
           )}
+          {(previa.avisos ?? []).length > 0 && (
+            <Aviso tipo="atencao" titulo="Atenção antes de enviar">
+              <ul className="lista-simples">
+                {(previa.avisos ?? []).map(a => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </Aviso>
+          )}
           <h3 style={{ margin: 0 }}>Mensagens ({previa.mensagens.length})</h3>
           {previa.mensagens.length === 0 && <p className="suave">Nenhuma mensagem seria enviada.</p>}
           {previa.mensagens.map((m, i) => (

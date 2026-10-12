@@ -127,8 +127,16 @@ function AlertasAbertos() {
           {alertas.map(a => (
             <li key={`${a.episodioId}-${a.id}`} style={{ marginBottom: 6 }}>
               <strong>{a.pacienteNome}</strong>: {a.nivel === 'alerta' ? 'ALERTA' : 'Sinalizado'}: {a.titulo}. <span className="suave">{a.descricao}</span>{' '}
-              {a.comunicado ? <Selo tipo="ok">comunicado {formatarDataHora(a.comunicado.em)}</Selo> : <Selo tipo="perigo">ainda não comunicado</Selo>}{' '}
-              {!a.conduta && <Selo tipo="atencao">sem conduta escrita</Selo>} <Link to={`${ROTAS.episodio(a.episodioId, 'd7')}&ir=alertas`}>Abrir</Link>
+              {a.comunicado && !(a.comunicacaoPendente ?? false) ? (
+                <Selo tipo="ok">comunicado {formatarDataHora(a.comunicado.em)}</Selo>
+              ) : (
+                <Selo tipo="perigo">{a.comunicado ? 'mudou: comunicar de novo' : 'ainda não comunicado'}</Selo>
+              )}{' '}
+              {a.inativo && <Selo tipo="atencao">deixou de valer (resposta corrigida)</Selo>}{' '}
+              {!a.inativo && a.nivel === 'alerta' && (!a.conduta || a.condutaDesatualizada) && (
+                <Selo tipo="atencao">{a.condutaDesatualizada ? 'conduta desatualizada' : 'sem conduta escrita'}</Selo>
+              )}{' '}
+              <Link to={`${ROTAS.episodio(a.episodioId, 'd7')}&ir=alertas`}>Abrir</Link>
             </li>
           ))}
         </ul>

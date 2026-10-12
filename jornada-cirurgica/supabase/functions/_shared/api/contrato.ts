@@ -140,15 +140,24 @@ export interface AcoesEquipe {
 
   'tcle.status': { E: { episodioId: string; versao: number; status: Exclude<StatusTcle, 'nao_enviado'>; link?: string | null }; S: EpisodioVisao }
   /** Mostra o pacote (textos e destinatários) ANTES de enviar. Não grava nada. */
-  'materiais.previa': { E: { episodioId: string }; S: { mensagens: { gatilho: string; destinoMascarado: string; texto: string }[]; materiais: MaterialCatalogo[]; modoEnvio: 'ensaio' | 'real'; impedimentos: string[] } }
+  'materiais.previa': {
+    E: { episodioId: string }
+    /** `avisos`: o que o domínio informa sem impedir o envio (ex.: TCLE retido até realinhar a expectativa). */
+    S: { mensagens: { gatilho: string; destinoMascarado: string; texto: string }[]; materiais: MaterialCatalogo[]; modoEnvio: 'ensaio' | 'real'; impedimentos: string[]; avisos: string[] }
+  }
   'materiais.enviar': { E: { episodioId: string; versao: number }; S: EpisodioVisao }
 
   'hardstop.resolver': { E: { episodioId: string; versao: number; codigo: CodigoHardStop; resolucao: string }; S: EpisodioVisao }
-  'intercorrencia.registrar': { E: { episodioId: string; versao: number; descricao: string }; S: EpisodioVisao }
+  /** `neverEvent` (opcional): olho, paciente ou LIO errados — indicador 5 do POP. */
+  'intercorrencia.registrar': { E: { episodioId: string; versao: number; descricao: string; neverEvent?: 'olho_errado' | 'paciente_errado' | 'lio_errada' | null }; S: EpisodioVisao }
   'episodio.suspender': { E: { episodioId: string; versao: number; motivo: string; causa: CausaCancelamento | null; evitavel: boolean | null }; S: EpisodioVisao }
   'episodio.cancelar': { E: { episodioId: string; versao: number; motivo: string; causa: CausaCancelamento | null; evitavel: boolean | null }; S: EpisodioVisao }
   'avisos.atraso': { E: { episodioId: string; versao: number; minutos: number | null }; S: EpisodioVisao }
-  'quase_evento.registrar': { E: { episodioId: string; versao: number; etapa: 'chegada' | 'd2' | 'd0'; descricao: string }; S: EpisodioVisao }
+  /** `categoria` (opcional): o indicador 4 conta só identidade, olho e LIO. */
+  'quase_evento.registrar': {
+    E: { episodioId: string; versao: number; etapa: 'chegada' | 'd2' | 'd0'; descricao: string; categoria?: 'identidade' | 'olho' | 'lio' | 'outro' | null }
+    S: EpisodioVisao
+  }
 
   'etiquetas.gerar': { E: { episodioId: string }; S: Etiqueta[] }
   'etiqueta.copiada': { E: { episodioId: string; versao: number; etiqueta: TipoEtiqueta }; S: { ok: true } }

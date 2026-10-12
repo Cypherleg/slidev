@@ -28,6 +28,8 @@ export function contextoChecklist(visao: EpisodioVisao): ContextoChecklist {
     lenteTorica: visao.lente.plano ? visao.lente.plano.torica : normal(visao.episodio.tipoLente).includes('TORIC'),
     dotD: visao.dots.some(d => d.letra === 'D'),
     blocosConcluidos: ORDEM_MODELOS.filter(m => visao.blocos[m]?.situacao === 'concluido'),
+    respostasPorModelo: visao.respostas,
+    modelos: visao.modelos,
   }
 }
 

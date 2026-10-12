@@ -1,6 +1,6 @@
 // Entrada de resposta para cada TipoResposta do modelo de checklist.
 import { useEffect, useState } from 'react'
-import type { ItemModelo, ValorAlergia, ValorMedicamento, ValorPessoa, ValorResposta } from '@dominio/tipos.ts'
+import type { ItemModelo, OpcaoItem, ValorAlergia, ValorMedicamento, ValorPessoa, ValorResposta } from '@dominio/tipos.ts'
 import { EscolhaUnica } from '../base/index.tsx'
 import { formatarNumero, lerNumero } from '../formato.ts'
 import { camposExtrasMedicamento, ROTULO_CAMPO_PESSOA, ROTULO_USO, rotuloDetalhesMedicamento } from './valores.ts'
@@ -16,6 +16,8 @@ export interface PropsCampo {
   idTexto: string
   /** A resposta já registrada é uma confirmação (não pode ser desmarcada). */
   confirmado?: boolean
+  /** Opções visíveis, quando dependem de outro registro (padrão: `item.opcoes`). */
+  opcoes?: OpcaoItem[]
 }
 
 export function CampoResposta(p: PropsCampo) {
@@ -38,7 +40,7 @@ export function CampoResposta(p: PropsCampo) {
         />
       )
     case 'opcao': {
-      const opcoes = [...(p.item.opcoes ?? [])]
+      const opcoes = [...(p.opcoes ?? p.item.opcoes ?? [])]
       if (p.item.permiteNaoSabe) opcoes.push({ valor: 'nao_sabe', rotulo: 'Não sabe' })
       return (
         <EscolhaUnica
@@ -125,7 +127,7 @@ function CampoMultipla(p: PropsCampo) {
   const atual = Array.isArray(p.valor) ? p.valor : []
   return (
     <div className="opcoes-toque" role="group" aria-labelledby={p.idTexto}>
-      {(p.item.opcoes ?? []).map(o => {
+      {(p.opcoes ?? p.item.opcoes ?? []).map(o => {
         const marcado = atual.includes(o.valor)
         return (
           <label key={o.valor} className={`opcao-toque${marcado ? ' marcada' : ''}${p.desabilitado ? ' desabilitada' : ''}`}>

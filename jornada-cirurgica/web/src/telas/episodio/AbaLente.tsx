@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import type { DadosPlanoLente, Papel } from '@dominio/tipos.ts'
 import { chamar } from '../../api/cliente.ts'
+import { useSessaoOpcional } from '../../app/sessao.tsx'
 import { Aviso, Botao, Campo, Cartao, EscolhaUnica, Selo } from '../../componentes/base/index.tsx'
 import { dataValida, formatarData, formatarDataHora } from '../../componentes/formato.ts'
 import { CampoDioptria, CamposLente, estadoLenteDe, estadoLenteVazio, lerDioptria, lerEstadoLente, resumoValores } from '../../componentes/lente/CamposLente.tsx'
@@ -457,7 +458,13 @@ function PainelChegada(props: PropsPainel) {
 function PainelCheckpoint2(props: PropsPainel) {
   const { visao, ctl, papeis } = props
   const lente = visao.lente
-  const p = permissao(visao, papeis, 'lente.cp2')
+  const sessao = useSessaoOpcional()
+  // [S] Conferência cega pela sessão: o checkpoint 2 é feito só com o login da própria conferente (sem troca por PIN).
+  const porPin = Boolean(sessao?.ator)
+  const pServidor = permissao(visao, papeis, 'lente.cp2')
+  const p = porPin && pServidor.permitido
+    ? { permitido: false, motivo: 'O checkpoint 2 é feito com o login da própria conferente, sem troca por PIN (conferência cega). Encerre o PIN e entre com o seu usuário.' }
+    : pServidor
   const encerrado = motivoEncerrado(visao)
   const ehConferente = papeis.includes('conferente')
   return (

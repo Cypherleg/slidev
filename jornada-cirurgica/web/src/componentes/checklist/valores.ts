@@ -21,17 +21,20 @@ export const ROTULO_USO: Record<ValorMedicamento['uso'], string> = {
  * O modelo não marca isso explicitamente: a tela reconhece pelos ids estáveis do domínio (D7.glp1,
  * D7.insulina) e, para modelos futuros, pelo texto do item.
  */
-export function camposExtrasMedicamento(item: Pick<ItemModelo, 'id' | 'texto'>): { glp1: boolean; insulina: boolean; colirio: boolean } {
+export function camposExtrasMedicamento(item: Pick<ItemModelo, 'id' | 'texto' | 'camposMedicamento'>): { glp1: boolean; insulina: boolean; colirio: boolean } {
+  const colirio = item.id === D7.colirios || /colirio|colírio/i.test(item.id)
+  // O modelo marca os campos extras (`camposMedicamento`); modelos antigos: ids estáveis e texto do item.
+  if (item.camposMedicamento) return { glp1: item.camposMedicamento.includes('glp1'), insulina: item.camposMedicamento.includes('insulina'), colirio }
   const t = `${item.id} ${item.texto}`.toLowerCase()
   return {
     glp1: item.id === D7.glp1 || /glp|tirzepatid|semaglut/.test(t),
     insulina: item.id === D7.insulina || /insulin|antidiab/.test(t),
-    colirio: item.id === D7.colirios,
+    colirio,
   }
 }
 
 /** Rótulo do campo "detalhes" conforme o item (POP §1.B). */
-export function rotuloDetalhesMedicamento(item: Pick<ItemModelo, 'id' | 'texto'>): string {
+export function rotuloDetalhesMedicamento(item: Pick<ItemModelo, 'id' | 'texto' | 'camposMedicamento'>): string {
   const e = camposExtrasMedicamento(item)
   if (e.glp1) return 'Dose'
   if (e.insulina) return 'Tipo, dose e horário'
@@ -99,18 +102,19 @@ export function validarValor(item: ItemModelo, v: ValorResposta | undefined | nu
       const semDetalhes = !m.detalhes || m.detalhes.trim() === ''
       if (extras.glp1 && m.ultimaAplicacao && !dataValida(m.ultimaAplicacao)) return 'GLP-1: data da última aplicação inválida.'
       if (m.uso !== 'usa') return null
-      if (extras.glp1) {
+      // Exigências do servidor: só nos itens do D-7 (os registros atualizados do D-2/admissão mostram os campos, sem exigir).
+      if (item.id === D7.glp1) {
         if (semDetalhes) return 'GLP-1: registre a dose.'
         if (m.aplicacao !== 'semanal' && m.aplicacao !== 'diaria') return 'GLP-1: informe se a aplicação é semanal ou diária.'
         if (!dataValida(m.ultimaAplicacao)) return 'GLP-1: informe a data da última aplicação.'
         if (typeof m.inicioOuAumentoUltimos3Meses !== 'boolean') return 'GLP-1: responda se iniciou ou aumentou a dose nos últimos 3 meses.'
         if (typeof m.nauseaOuVomito !== 'boolean') return 'GLP-1: responda se tem náusea ou vômito.'
       }
-      if (extras.insulina) {
+      if (item.id === D7.insulina) {
         if (semDetalhes) return 'Registre tipo, dose e horário.'
         if (typeof m.insulinaOuSulfonilureia !== 'boolean') return 'Responda se é insulina ou sulfonilureia (dot D).'
       }
-      if (extras.colirio && semDetalhes) return 'Registre o nome e o olho do colírio.'
+      if (item.id === D7.colirios && semDetalhes) return 'Registre o nome e o olho do colírio.'
       return null
     }
     case 'alergia': {

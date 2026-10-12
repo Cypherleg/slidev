@@ -1,7 +1,8 @@
 // Renderizador GENÉRICO de ModeloChecklist (todas as TipoResposta).
 // - Mostra `ajuda` como informação do serviço, `pendente` como pendência do POP, autor/hora/fora de hora/correções.
 // - Respeita `papeis` (quem responde), `depoisDe` (ordem obrigatória) e `exigeBlocosConcluidos`.
-// - Mostra `exigidoQuando` (obrigatório só sob condição), `exigeSim` e `foraDeHoraApos` (hora real, regra 5).
+// - Mostra `exigidoQuando` (obrigatório só sob condição, inclusive entre modelos: 'd7:C.olho_unico_qual'),
+//   `exigeSim` e `foraDeHoraApos` (hora real, regra 5); pede a observação quando a regra exige.
 // - Salva por seção (lote) ou item a item (sala): sempre só o que mudou; correção é um novo registro.
 // - Nenhum campo em branco: destaca o que falta (`BlocoVisao.faltam`).
 import { useMemo, useState } from 'react'
@@ -12,6 +13,7 @@ import type { Permissao } from '../permissoes.ts'
 import { temAlgumPapel } from '../permissoes.ts'
 import { ROTULO_HARD_STOP_CURTO, ROTULO_MODELO, rotuloPapeis } from '../rotulos.ts'
 import { CampoResposta } from './CampoResposta.tsx'
+import { condicaoValeCom, observacaoExigida, opcoesVisiveis, referenciaItem } from './regrasItem.ts'
 import type { RespostaParaEnviar } from './valores.ts'
 import { validarValor, valoresIguais } from './valores.ts'
 
@@ -28,6 +30,10 @@ export interface ContextoChecklist {
   lenteTorica?: boolean
   dotD?: boolean
   blocosConcluidos?: ModeloId[]
+  /** Respostas de todos os modelos do episódio (condições entre modelos; opções que dependem do D-7). */
+  respostasPorModelo?: Partial<Record<ModeloId, Record<string, RespostaAtual>>>
+  /** Modelos do episódio (texto do item de outro modelo citado numa condição). */
+  modelos?: Partial<Record<ModeloId, ModeloChecklist>>
 }
 
 const ROTULO_CONTEXTO: Record<'homonimo_no_dia' | 'lente_torica' | 'dot_D', { quando: string; agora: string }> = {
@@ -96,23 +102,52 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
 
   const concluidos = props.contexto?.blocosConcluidos ?? []
 
+  const itemDe = (modeloId: ModeloId, itemId: string): ItemModelo | undefined => {
+    if (modeloId === modelo.id) return itemPorId(modelo, itemId)
+    const outro = props.contexto?.modelos?.[modeloId]
+    return outro ? itemPorId(outro, itemId) : undefined
+  }
+  const valorDe = (modeloId: ModeloId, itemId: string): ValorResposta | undefined => {
+    if (modeloId === modelo.id) {
+      const i = itemPorId(modelo, itemId)
+      return i ? valorExibido(i) : respostas[itemId]?.valor
+    }
+    return props.contexto?.respostasPorModelo?.[modeloId]?.[itemId]?.valor
+  }
+  const ativaContexto = (c: Extract<CondicaoItem, { contexto: string }>): boolean =>
+    c.contexto === 'homonimo_no_dia' ? Boolean(props.contexto?.homonimoNoDia) : c.contexto === 'lente_torica' ? Boolean(props.contexto?.lenteTorica) : Boolean(props.contexto?.dotD)
+  /** O valor de um item condicional só conta quando a condição dele também vale (como no domínio). */
+  const condicaoAtiva = (c: CondicaoItem, modeloRef: ModeloId, profundidade = 0): boolean => {
+    if ('contexto' in c) return ativaContexto(c)
+    const ref = referenciaItem(c.itemId, modeloRef)
+    const alvo = itemDe(ref.modelo, ref.itemId)
+    if (alvo?.exigidoQuando && profundidade < 4 && !condicaoAtiva(alvo.exigidoQuando, ref.modelo, profundidade + 1)) return false
+    return condicaoValeCom(valorDe(ref.modelo, ref.itemId), c.valores)
+  }
+
   /** Condição de `exigidoQuando`: texto legível e se vale agora (com o que está na tela). */
   const condicao = (c: CondicaoItem | undefined): CondicaoExibida | null => {
     if (!c) return null
-    if ('contexto' in c) {
-      const ativa =
-        c.contexto === 'homonimo_no_dia'
-          ? Boolean(props.contexto?.homonimoNoDia)
-          : c.contexto === 'lente_torica'
-            ? Boolean(props.contexto?.lenteTorica)
-            : Boolean(props.contexto?.dotD)
-      return { ...ROTULO_CONTEXTO[c.contexto], ativa }
-    }
-    const alvo = itemPorId(modelo, c.itemId)
-    const v = alvo ? valorExibido(alvo) : undefined
+    if ('contexto' in c) return { ...ROTULO_CONTEXTO[c.contexto], ativa: ativaContexto(c) }
+    const ref = referenciaItem(c.itemId, modelo.id)
+    const alvo = itemDe(ref.modelo, ref.itemId)
     const rotulos = c.valores.map(x => alvo?.opcoes?.find(o => o.valor === x)?.rotulo ?? (x === 'sim' ? 'Sim' : x === 'nao' ? 'Não' : x)).join(' ou ')
-    const nome = `"${textos[c.itemId] ?? c.itemId}"`
-    return { quando: `${nome} for ${rotulos}`, agora: `${nome} é ${rotulos}`, ativa: typeof v === 'string' && c.valores.includes(v) }
+    const nome = `"${alvo?.texto ?? ref.itemId}"${ref.modelo !== modelo.id ? ` (${ROTULO_MODELO[ref.modelo] ?? ref.modelo})` : ''}`
+    return { quando: `${nome} for ${rotulos}`, agora: `${nome} é ${rotulos}`, ativa: condicaoAtiva(c, modelo.id) }
+  }
+
+  /** Observação obrigatória para o valor atual (null se não exigida). */
+  const obsExigida = (item: ItemModelo): string | null =>
+    observacaoExigida(item, modelo.id, valorExibido(item), Boolean(respostas[item.id]), concluidos)
+
+  /** Erro que impede registrar o item alterado: valor incompleto ou observação obrigatória vazia. */
+  const erroDoItem = (item: ItemModelo): string | null => {
+    if (!alterado(item)) return null
+    const r = rascunhos[item.id]
+    const e = validarValor(item, r?.valor)
+    if (e) return e
+    const obs = obsExigida(item)
+    return obs && !(r?.observacao ?? '').trim() ? obs : null
   }
 
   // Bloqueio do checklist inteiro: mostrado uma vez no topo, não repetido em cada item.
@@ -148,7 +183,7 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
 
   const enviar = async (chave: string, itens: ItemModelo[]) => {
     const lote = itens.filter(alterado)
-    if (!lote.length || lote.some(i => validarValor(i, rascunhos[i.id].valor) !== null)) return
+    if (!lote.length || lote.some(i => erroDoItem(i) !== null)) return
     setSalvando(chave)
     try {
       const ok = await props.aoSalvar(
@@ -210,6 +245,9 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
           bloqueioGlobal={bloqueioGlobal}
           condicao={condicao}
           concluidos={concluidos}
+          erroDoItem={erroDoItem}
+          obsExigida={obsExigida}
+          opcoes={item => opcoesVisiveis(item, modelo.id, valorExibido(item), props.contexto?.respostasPorModelo)}
           mudar={mudar}
           enviar={enviar}
         />
@@ -237,12 +275,15 @@ function SecaoChecklist(p: {
   bloqueioGlobal: string | null
   condicao: (c: CondicaoItem | undefined) => CondicaoExibida | null
   concluidos: ModeloId[]
+  erroDoItem: (i: ItemModelo) => string | null
+  obsExigida: (i: ItemModelo) => string | null
+  opcoes: (i: ItemModelo) => ItemModelo['opcoes']
   mudar: (i: ItemModelo, r: Rascunho | null) => void
   enviar: (chave: string, itens: ItemModelo[]) => Promise<void>
 }) {
   const { secao } = p
   const alterados = secao.itens.filter(p.alterado)
-  const invalidos = alterados.filter(i => validarValor(i, p.rascunhos[i.id]?.valor) !== null)
+  const invalidos = alterados.filter(i => p.erroDoItem(i) !== null)
   const obrigatorios = secao.itens.filter(i => i.obrigatorio)
   const respondidos = obrigatorios.filter(i => p.respostas[i.id]).length
   const idSecao = idDomItem(p.prefixo, `secao-${secao.id}`)
@@ -263,7 +304,7 @@ function SecaoChecklist(p: {
       )}
       {secao.itens.map(item => {
         const motivo = p.motivoBloqueio(item)
-        const erro = p.alterado(item) ? validarValor(item, p.rascunhos[item.id]?.valor) : null
+        const erro = p.erroDoItem(item)
         return (
           <ItemChecklist
             key={item.id}
@@ -279,6 +320,8 @@ function SecaoChecklist(p: {
             erro={erro}
             condicao={p.condicao(item.exigidoQuando)}
             foraDeHora={item.foraDeHoraApos && p.concluidos.includes(item.foraDeHoraApos) ? item.foraDeHoraApos : null}
+            observacaoExigida={p.obsExigida(item)}
+            opcoes={p.opcoes(item)}
             aoMudar={r => p.mudar(item, r)}
             registrarAgora={
               p.modo === 'imediato'
@@ -334,6 +377,10 @@ export function ItemChecklist(p: {
   condicao?: CondicaoExibida | null
   /** Bloco já concluído depois do qual a marcação fica fora de hora. */
   foraDeHora?: ModeloId | null
+  /** A regra exige observação para o valor atual (texto do motivo). */
+  observacaoExigida?: string | null
+  /** Opções visíveis (quando dependem de outro registro). */
+  opcoes?: ItemModelo['opcoes']
   aoMudar: (r: Rascunho | null) => void
   registrarAgora?: { aoRegistrar: () => void; registrando: boolean }
 }) {
@@ -353,12 +400,34 @@ export function ItemChecklist(p: {
     .filter(Boolean)
     .join(' ')
   const observacao = p.rascunho?.observacao ?? resposta?.observacao ?? ''
+  // Item condicional cuja condição não vale (e sem resposta): fica recolhido para não poluir a tela.
+  const [expandido, setExpandido] = useState(false)
+  const recolhido = Boolean(p.condicao && !p.condicao.ativa && !item.obrigatorio && !resposta && !p.alterado && !expandido)
   const mudarValor = (v: ValorResposta | undefined) => {
     if (v === undefined && !resposta) {
       p.aoMudar(null)
       return
     }
     p.aoMudar({ valor: v, observacao })
+  }
+  if (recolhido && p.condicao) {
+    return (
+      <div className={`${classes} recolhido`} id={p.idDom} data-item={item.id} data-tipo={item.tipo}>
+        <span className="texto-item" id={idTexto}>
+          {item.texto}
+        </span>
+        <p className="suave" style={{ margin: 0 }}>
+          Responder quando {p.condicao.quando}.
+        </p>
+        {!desabilitado && (
+          <div>
+            <Botao tipo="secundario" pequeno onClick={() => setExpandido(true)} rotuloAria={`Responder mesmo assim: ${item.texto}`}>
+              Responder mesmo assim
+            </Botao>
+          </div>
+        )}
+      </div>
+    )
   }
   return (
     <div className={classes} id={p.idDom} data-item={item.id} data-tipo={item.tipo}>
@@ -384,7 +453,7 @@ export function ItemChecklist(p: {
       )}
       {item.exigeSim && (
         <p className="suave" style={{ margin: 0 }}>
-          Conferência: o bloco só é concluído com a resposta Sim.
+          {item.tipo === 'opcao' ? 'Conferência: o bloco não é concluído com a resposta "Não".' : 'Conferência: o bloco só é concluído com a resposta Sim.'}
         </p>
       )}
       {item.exigeSim && p.valor === 'nao' && (
@@ -422,10 +491,18 @@ export function ItemChecklist(p: {
         idBase={p.idDom}
         idTexto={idTexto}
         confirmado={item.tipo === 'confirmacao' && resposta?.valor === true}
+        opcoes={p.opcoes}
       />
-      {(verObs || observacao) && !desabilitado ? (
+      {p.observacaoExigida && p.alterado && (
+        <p className="info-alerta" style={{ margin: 0 }}>
+          Observação obrigatória: {p.observacaoExigida}
+        </p>
+      )}
+      {(verObs || observacao || (p.observacaoExigida && p.alterado)) && !desabilitado ? (
         <div className="campo">
-          <label htmlFor={`${p.idDom}-observacao`}>Observação</label>
+          <label htmlFor={`${p.idDom}-observacao`}>
+            Observação{p.observacaoExigida && p.alterado ? <span className="obrigatorio"> (obrigatória)</span> : null}
+          </label>
           <input id={`${p.idDom}-observacao`} type="text" autoComplete="off" value={observacao} onChange={e => p.aoMudar({ valor: p.valor, observacao: e.target.value })} />
         </div>
       ) : (

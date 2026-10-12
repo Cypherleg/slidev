@@ -4,6 +4,7 @@
 import type { AcaoEquipe, AcoesEquipe } from '../supabase/functions/_shared/api/contrato.ts'
 import type { EpisodioVisao, ModeloId, Olho, ValorResposta } from '../supabase/functions/_shared/dominio/index.ts'
 import { AN, D7, SI } from '../supabase/functions/_shared/dominio/modelos/ids.ts'
+import { ALERTAS_HS6 } from '../supabase/functions/_shared/dominio/index.ts'
 import { respostasDoModelo } from './preencher.ts'
 
 export interface Pessoa {
@@ -66,9 +67,27 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: string) {
     // Cada item é respondido uma vez (por quem chega primeiro); correção só quando pedida em `sobrepor`.
     const jaRespondidos = new Set(Object.keys(v.respostas[modelo] ?? {}))
     const filtroFinal = (itemId: string, secaoId: string) => (itemId in sobrepor || !jaRespondidos.has(itemId)) && (!filtro || filtro(itemId, secaoId))
-    const anteriores = v.identificacao.segundoOlho !== null
-    const semAlertas = !v.alertas.some(a => a.origem.modelo === 'd7' && !a.inativo)
-    const respostas = respostasDoModelo(v.modelos[modelo], quem.papeis, { olho: v.episodio.olho, hoje: dataLocal(0), dataCirurgia: v.episodio.dataCirurgia, segundoOlho: anteriores, semAlertasD7: semAlertas }, sobrepor, filtroFinal)
+    // Conduta escrita só se aplica aos alertas do HS6 (α-bloqueador, anticoagulante, antiagregante).
+    const semAlertas = !v.alertas.some(a => ALERTAS_HS6.includes(a.id) && !a.inativo)
+    const valores = (m: string) => Object.fromEntries(Object.entries(v.respostas[m as ModeloId] ?? {}).map(([k, r]) => [k, r.valor]))
+    const respostas = respostasDoModelo(
+      v.modelos[modelo],
+      quem.papeis,
+      {
+        olho: v.episodio.olho,
+        hoje: dataLocal(0),
+        dataCirurgia: v.episodio.dataCirurgia,
+        segundoOlho: v.identificacao.segundoOlho !== null,
+        dataPrimeiroOlho: v.identificacao.segundoOlho?.dataPrimeiro ?? null,
+        semAlertasD7: semAlertas,
+        homonimo: v.identificacao.exigeNomeMae || v.identificacao.homonimoNoDia || v.identificacao.nomesParecidos.length > 0,
+        torica: Boolean(v.lente.plano?.torica),
+        existentes: valores(modelo),
+        outroModelo: (m, item) => valores(m)[item],
+      },
+      sobrepor,
+      filtroFinal,
+    )
     if (!respostas.length) return v
     return chamar(quem, 'checklist.responder', { episodioId: id, versao: v.episodio.versao, modelo, respostas })
   }
@@ -95,6 +114,19 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: string) {
   const abrir = async (pacienteId: string, olho: Olho, dataSugerida: string | null, cirurgiao: Pessoa = eq.cirurgiao) =>
     (await chamar(eq.concierge, 'episodio.abrir', { pacienteId, olho, cirurgiaoId: cirurgiao.id, tipoCirurgia: 'Facectomia com implante de LIO', tipoLente: 'Monofocal', dataSugerida })).episodioId
 
+  /** Comunica ao cirurgião cada alerta pendente (via painel) e registra a conduta escrita dele. */
+  const comunicarAlertas = async (id: string) => {
+    const v = await obter(id)
+    for (const a of v.alertas) {
+      if (a.nivel !== 'alerta') continue
+      if (!a.comunicado || a.comunicacaoPendente) await com(id, eq.concierge, 'alerta.comunicar', { alertaId: a.id, via: 'painel', cirurgiaoId: v.episodio.cirurgiao.id, observacao: null })
+      if (!a.inativo && (!a.conduta || a.condutaDesatualizada)) {
+        const cirurgiao = v.episodio.cirurgiao.id === eq.cirurgiao.id ? eq.cirurgiao : { ...eq.cirurgiao, id: v.episodio.cirurgiao.id }
+        await com(id, cirurgiao, 'alerta.conduta', { alertaId: a.id, conduta: 'Ciente; conduta registrada (fictício).' }).catch(() => undefined)
+      }
+    }
+  }
+
   /** Contatos com anuência e confirmados (avisos só para números confirmados). */
   const contatos = async (id: string) => {
     const lista: AcoesEquipe['contato.salvar']['E']['contato'][] = [
@@ -120,7 +152,10 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: string) {
     await com(id, eq.concierge, 'tcle.status', { status: 'enviado', link: 'https://exemplo.invalid/tcle/assinatura' })
     // Fechamento (POP §1.G): materiais enviados pelo painel antes de marcar o item.
     if (o.materiais !== false) await com(id, eq.concierge, 'materiais.enviar', {})
-    await responder(id, 'd7', eq.concierge, { [D7.materiais]: o.materiais === false ? 'presencial' : 'enviados', ...(o.sobrepor ?? {}) })
+    // "Alertas comunicados" só depois de comunicar cada ALERTA ao cirurgião (POP §1.G).
+    await responder(id, 'd7', eq.concierge, { [D7.materiais]: o.materiais === false ? 'presencial' : 'enviados', ...(o.sobrepor ?? {}) }, item => item !== D7.alertasComunicados)
+    await comunicarAlertas(id)
+    await responder(id, 'd7', eq.concierge)
     await concluir(id, 'd7', eq.concierge)
   }
 
@@ -197,5 +232,5 @@ export function roteiro(chamar: Chamar, eq: Equipe, pin: string) {
     return concluir(id, 'alta', eq.enfermagem)
   }
 
-  return { obter, com, responder, concluir, cadastrar, abrir, contatos, d7, cp1, cp2, d2, admissao, signIn, anestesia, timeOut, signOut, liberacaoAnestesia, alta }
+  return { obter, com, responder, concluir, cadastrar, abrir, contatos, comunicarAlertas, d7, cp1, cp2, d2, admissao, signIn, anestesia, timeOut, signOut, liberacaoAnestesia, alta }
 }

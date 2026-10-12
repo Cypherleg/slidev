@@ -75,7 +75,7 @@ export async function semear(deps: DepsSemente): Promise<void> {
   }
 
   // 2) Modelos v1 (a API grava modelosPadrao() como jornada_sistema na primeira leitura).
-  await passo('modelos v1', () => api.chamar(US.gestora, 'modelos.listar', {}))
+  await passo('modelos (versão padrão do código)', () => api.chamar(US.gestora, 'modelos.listar', {}))
 
   // 3) Configuração (sobre o padrão): só telefones fictícios.
   const [{ n: nConfig }] = await sql`select count(*)::int as n from jornada_cirurgica.config`

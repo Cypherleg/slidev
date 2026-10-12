@@ -234,43 +234,44 @@ export async function listarModelos(tx: Executor): Promise<ModeloLinha[]> {
 }
 
 /**
- * Versão ativa de cada modelo (a última publicada). Se a tabela não tiver um modelo,
- * grava a versão de `modelosPadrao()` como jornada_sistema (em savepoint: sem a concessão,
- * usa o padrão em memória — `carregarModelosVersoes` reconhece a mesma versão).
- * Deixa o papel em jornada_sistema.
+ * Versão ativa de cada modelo = a publicada mais recentemente (pela gestora ou pelo sistema).
+ * Semeadura: se a versão padrão do código (`modelosPadrao(config)`, a mesma de `versoesDosModelos`)
+ * ainda não está na tabela, é gravada como jornada_sistema (`publicado_por` nulo) e passa a ser a ativa —
+ * inclusive em bancos que já tinham uma versão anterior (ex.: pop-0.4/1 → pop-0.4/2). Episódios
+ * existentes continuam com a versão que guardaram na abertura. Em savepoint: sem a concessão, um modelo
+ * sem nenhuma linha usa o padrão em memória. Deixa o papel em jornada_sistema.
  */
-export async function modelosAtivos(tx: Executor): Promise<Record<ModeloId, ModeloLinha>> {
+export async function modelosAtivos(tx: Executor, config?: ConfigJornada): Promise<Record<ModeloId, ModeloLinha>> {
   await comoSistema(tx)
-  const todos = await listarModelos(tx)
-  const ativos = {} as Record<ModeloId, ModeloLinha>
-  for (const m of todos) ativos[m.id] = m // ordenado por publicado_em: o último vence
-  const faltam = ORDEM_MODELOS.filter(id => !ativos[id])
-  if (faltam.length) {
-    const padrao = modelosPadrao()
-    for (const id of faltam) {
-      const modelo = padrao[id]
-      if (!modelo) continue
-      let publicadoEm = new Date().toISOString()
-      await tx.consulta('savepoint jc_modelo_padrao')
-      try {
-        const r = await tx.consulta(
-          `insert into ${S}.modelos_checklist (id, versao, conteudo, publicado_por) values ($1, $2, $3::jsonb, null)
-           on conflict do nothing returning publicado_em`,
-          [id, modelo.versao, modelo],
-        )
-        if (r[0]) publicadoEm = iso(r[0].publicado_em)
-        await tx.consulta('release savepoint jc_modelo_padrao')
-      } catch {
-        await tx.consulta('rollback to savepoint jc_modelo_padrao')
-        await comoSistema(tx)
-      }
-      ativos[id] = { id, versao: modelo.versao, publicadoEm, conteudo: modelo }
+  const cfg = config ?? (await lerConfigJornada(tx))
+  const padrao = modelosPadrao(cfg)
+  const antes = await listarModelos(tx)
+  const existentes = new Set(antes.map(m => `${m.id}@${m.versao}`))
+  const emMemoria: ModeloLinha[] = []
+  for (const id of ORDEM_MODELOS) {
+    const modelo = padrao[id]
+    if (!modelo || existentes.has(`${id}@${modelo.versao}`)) continue
+    await tx.consulta('savepoint jc_modelo_padrao')
+    try {
+      await tx.consulta(`insert into ${S}.modelos_checklist (id, versao, conteudo, publicado_por) values ($1, $2, $3::jsonb, null) on conflict do nothing`, [id, modelo.versao, modelo])
+      await tx.consulta('release savepoint jc_modelo_padrao')
+    } catch {
+      await tx.consulta('rollback to savepoint jc_modelo_padrao')
+      await comoSistema(tx)
+      if (!antes.some(m => m.id === id)) emMemoria.push({ id, versao: modelo.versao, publicadoEm: new Date(0).toISOString(), conteudo: modelo })
     }
   }
+  const ativos = {} as Record<ModeloId, ModeloLinha>
+  for (const m of [...emMemoria, ...(await listarModelos(tx))]) ativos[m.id] = m // ordenado por publicado_em: o último vence
   return ativos
 }
 
-export async function carregarModelosVersoes(tx: Executor, versoes: Partial<Record<ModeloId, string>>, cache: Map<string, ModeloChecklist>): Promise<Record<ModeloId, ModeloChecklist>> {
+export async function carregarModelosVersoes(
+  tx: Executor,
+  versoes: Partial<Record<ModeloId, string>>,
+  cache: Map<string, ModeloChecklist>,
+  config?: ConfigJornada,
+): Promise<Record<ModeloId, ModeloChecklist>> {
   const out = {} as Record<ModeloId, ModeloChecklist>
   const faltam: { id: string; versao: string }[] = []
   for (const [id, versao] of Object.entries(versoes)) {
@@ -292,10 +293,10 @@ export async function carregarModelosVersoes(tx: Executor, versoes: Partial<Reco
     // Versão do padrão ainda não gravada na tabela: usa o padrão em memória.
     const pendentes = faltam.filter(f => !out[f.id as ModeloId])
     if (pendentes.length) {
-      const padrao = modelosPadrao()
+      const padroes = [modelosPadrao(), ...(config ? [modelosPadrao(config)] : [])]
       for (const f of pendentes) {
-        const m = padrao[f.id as ModeloId]
-        if (m && m.versao === f.versao) {
+        const m = padroes.map(p => p[f.id as ModeloId]).find(x => x && x.versao === f.versao)
+        if (m) {
           cache.set(`${f.id}@${f.versao}`, m)
           out[f.id as ModeloId] = m
         }
@@ -562,7 +563,7 @@ export async function carregarEntradas(tx: Executor, ids: string[], modo: ModoCa
   // Modelos por versão
   const versoes: Record<string, string>[] = eps.map(e => e.base.versoesModelos as Record<string, string>)
   const modelosPorEp = new Map<string, Record<ModeloId, ModeloChecklist>>()
-  for (let i = 0; i < eps.length; i++) modelosPorEp.set(eps[i].base.id, await carregarModelosVersoes(tx, versoes[i] as Record<ModeloId, string>, cache.modelos))
+  for (let i = 0; i < eps.length; i++) modelosPorEp.set(eps[i].base.id, await carregarModelosVersoes(tx, versoes[i] as Record<ModeloId, string>, cache.modelos, cache.config))
 
   if (modo.tipo === 'ator') await comoApi(tx, modo.ator)
   const epIds = eps.map(e => e.base.id)

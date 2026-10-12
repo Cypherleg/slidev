@@ -177,3 +177,12 @@ textarea.entrada { min-height: 72px; }
 .item-checklist.condicional-inativo { opacity: .8; border-style: dashed; }
 /* Âncoras não ficam escondidas sob o aviso do PIN e a faixa de identificação. */
 .cartao, .secao-checklist, .item-checklist, .quarentena, section { scroll-margin-top: 140px; }
+/* Verbalização obrigatória do Time Out (todo paciente). */
+.verbalizacao-time-out { border: 4px solid var(--marinho); background: #fff; border-radius: var(--raio); padding: 14px 16px; }
+.verbalizacao-time-out h3 { margin: 0 0 8px; font-size: 1.3rem; text-transform: uppercase; }
+.verbalizacao-time-out dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.verbalizacao-time-out dl div { display: contents; }
+.verbalizacao-time-out dt { font-weight: 800; font-size: 1.2rem; color: var(--marinho); }
+.verbalizacao-time-out dd { margin: 0; font-size: 1.25rem; font-weight: 700; }
+.item-checklist.recolhido { padding: 8px 12px; gap: 4px; }
+.item-checklist.recolhido .texto-item { font-weight: 600; font-size: 1rem; color: var(--texto-suave); }
