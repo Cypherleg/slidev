@@ -205,10 +205,10 @@ function ConferenciaPaciente(props: { cpf: string; resultado: ResultadoBuscaCpf;
           Cadastro manual a partir do documento com foto. Ficará marcado como <strong>NÃO CONFERIDO NO DATASIGH</strong>.
         </Aviso>
       )}
-      {!conferido && (
-        <p style={{ margin: 0 }}>
-          <Selo tipo="atencao">NÃO CONFERIDO NO DATASIGH</Selo>
-        </p>
+      {encontrado && !conferido && (
+        <Aviso tipo="atencao" titulo="Faltam campos no Datasigh">
+          Os campos que faltam serão digitados do documento com foto; o cadastro ficará marcado como <strong>NÃO CONFERIDO NO DATASIGH</strong>.
+        </Aviso>
       )}
       {encontrado && (
         <dl className="valores-lente">
