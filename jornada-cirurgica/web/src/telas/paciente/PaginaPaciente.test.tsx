@@ -227,6 +227,25 @@ describe('PaginaPaciente', () => {
     expect(document.querySelector('video')).toBeNull()
   })
 
+  it('questionário que deixou de estar disponível: recarrega e mostra o estado do servidor', async () => {
+    let obter = 0
+    mockPaciente.mockImplementation(async (acao: string) => {
+      if (acao === 'pagina.obter') {
+        obter += 1
+        return (obter === 1 ? paginaFicticia() : paginaFicticia({ podeResponder: false, tentativas: 2, ultimaTentativa: { aprovado: false, em: '2026-10-10T12:00:00Z' } })) as never
+      }
+      if (acao === 'quiz.responder') throw { erro: { codigo: 'validacao', mensagem: 'O questionário não está disponível.' } }
+      return { ok: true } as never
+    })
+    renderizar()
+    await screen.findByText('Olá, Alfa.')
+    preencherQuiz()
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar respostas' }))
+    expect(await screen.findByText(/A equipe do OFTA VITTA vai entrar em contato/)).toBeTruthy()
+    expect(obter).toBe(2)
+    expect(screen.queryByRole('button', { name: 'Enviar respostas' })).toBeNull()
+  })
+
   it('link inválido ou expirado: mensagem neutra, sem detalhes', async () => {
     mockPaciente.mockRejectedValue({ erro: { codigo: 'nao_encontrado', mensagem: 'Token expirado em 01/10/2026' } })
     renderizar('token-invalido')
