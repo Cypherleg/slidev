@@ -113,7 +113,8 @@ export default function ImpressaoBranco() {
       return { modelos: await Promise.all(ids.map(id => chamar('modelos.obter', versao ? { id, versao } : { id }))), embutidos: false }
     } catch (e) {
       // Contingência (regra 12): sem servidor, imprime a versão padrão embutida no aplicativo, com aviso.
-      if (codigoErro(e) !== 'indisponivel') throw e
+      // Também sem sessão (expirada ou aparelho sem login): o checklist em branco não tem dado de paciente.
+      if (!['indisponivel', 'nao_autenticado', 'mfa_exigido'].includes(codigoErro(e) ?? '')) throw e
       let padrao: ReturnType<typeof modelosPadrao>
       try {
         padrao = modelosPadrao()
@@ -153,7 +154,7 @@ export default function ImpressaoBranco() {
         <>
           {carga.dados.embutidos && (
             <div className="imp-folha nao-imprimir">
-              <Aviso tipo="atencao" titulo="Servidor indisponível: versão embutida no aplicativo.">
+              <Aviso tipo="atencao" titulo="Servidor indisponível ou sem sessão: versão embutida no aplicativo.">
                 Estes checklists vêm da versão padrão do POP guardada no aplicativo ({carga.dados.modelos.map(m => m.versao).filter((v, i, a) => a.indexOf(v) === i).join(', ')}). Se a
                 gestora publicou versão mais nova, ela pode ser diferente. A versão sai impressa no cabeçalho de cada folha.
               </Aviso>

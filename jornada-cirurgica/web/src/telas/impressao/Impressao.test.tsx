@@ -90,16 +90,23 @@ describe('ImpressaoBranco', () => {
   it('sem servidor, imprime a versão embutida no aplicativo, com aviso', async () => {
     mockChamar.mockRejectedValue({ erro: { codigo: 'indisponivel', mensagem: 'x' } })
     renderizar('/impressao/branco/sign_in')
-    expect(await screen.findByText('Servidor indisponível: versão embutida no aplicativo.')).toBeTruthy()
+    expect(await screen.findByText('Servidor indisponível ou sem sessão: versão embutida no aplicativo.')).toBeTruthy()
     expect(screen.getByRole('heading', { level: 1, name: 'Modelo fictício sign_in' })).toBeTruthy()
     expect(screen.getAllByText(/embutida\/1/).length).toBeGreaterThan(0)
+  })
+
+  it('sem sessão (contingência), também imprime a versão embutida', async () => {
+    mockChamar.mockRejectedValue({ erro: { codigo: 'nao_autenticado', mensagem: 'x' } })
+    renderizar('/impressao/branco/sign_in')
+    expect(await screen.findByText('Servidor indisponível ou sem sessão: versão embutida no aplicativo.')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Modelo fictício sign_in' })).toBeTruthy()
   })
 
   it('outros erros não usam a versão embutida', async () => {
     mockChamar.mockRejectedValue({ erro: { codigo: 'nao_encontrado', mensagem: 'x' } })
     renderizar('/impressao/branco/sign_in?versao=inexistente')
     expect(await screen.findByText('Registro não encontrado.')).toBeTruthy()
-    expect(screen.queryByText('Servidor indisponível: versão embutida no aplicativo.')).toBeNull()
+    expect(screen.queryByText('Servidor indisponível ou sem sessão: versão embutida no aplicativo.')).toBeNull()
   })
 
   it('modelo desconhecido não chama a API', async () => {
