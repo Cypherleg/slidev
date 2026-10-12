@@ -1,0 +1,40 @@
+{
+  "name": "jornada-cirurgica",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Painel da Jornada Cirúrgica de catarata — OFTA VITTA",
+  "scripts": {
+    "pg:iniciar": "bash scripts/pg-local.sh iniciar",
+    "pg:parar": "bash scripts/pg-local.sh parar",
+    "test": "vitest run",
+    "test:dominio": "vitest run tests/dominio",
+    "test:banco": "vitest run tests/banco",
+    "test:api": "vitest run tests/api",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev:api": "tsx dev/servidor.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "dev": "bash scripts/dev.sh",
+    "build:web": "vite build --config web/vite.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@supabase/supabase-js": "^2.117.3",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^29.1.1",
+    "postgres": "^3.4.9",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^7.18.4",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  }
+}

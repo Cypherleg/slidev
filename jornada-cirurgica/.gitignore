@@ -1,0 +1,12 @@
+node_modules/
+dist/
+web/dist/
+test-results/
+playwright-report/
+.env
+.env.*
+!.env.exemplo
+# Documentos internos (POP em rascunho, briefing com nomes e infraestrutura).
+# O repositório é público: não versionar sem autorização expressa do Dr. Augusto.
+docs/privado/
+*.log

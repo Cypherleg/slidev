@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "types": ["node", "vitest/globals", "vite/client"],
+    "paths": {
+      "@dominio/*": ["./supabase/functions/_shared/dominio/*"],
+      "@contrato": ["./supabase/functions/_shared/api/contrato.ts"]
+    }
+  },
+  "include": ["supabase/functions/_shared/**/*.ts", "web/src/**/*.ts", "web/src/**/*.tsx", "dev/**/*.ts", "tests/**/*.ts", "tests/**/*.tsx", "*.ts"],
+  "exclude": ["node_modules", "web/dist"]
+}

@@ -1,0 +1,114 @@
+/* Tokens e base visual. Público: equipe em tablet; alto contraste, alvos de toque grandes. */
+:root {
+  --marinho: #1b2a4a;
+  --marinho-claro: #2e4170;
+  --fundo: #f4f6f9;
+  --superficie: #ffffff;
+  --texto: #111827;
+  --texto-suave: #4b5563;
+  --borda: #cfd6e0;
+  --foco: #0b63ce;
+  --ok: #146c2e;
+  --ok-fundo: #e6f4ea;
+  --atencao: #8a5300;
+  --atencao-fundo: #fff4e0;
+  --perigo: #b42318;
+  --perigo-fundo: #fdecea;
+  --info-fundo: #e8eef9;
+  /* Dots: cor + letra, nunca só cor (POP §2) */
+  --dot-vermelho: #c62828;
+  --dot-amarelo: #f2c200;
+  --dot-rosa: #e05a9c;
+  --dot-azul: #1e5bc6;
+  --dot-laranja: #e8710a;
+  --dot-verde: #2e7d32;
+  --raio: 10px;
+  --toque: 48px;
+  --fonte: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--fonte);
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--texto);
+  background: var(--fundo);
+  -webkit-text-size-adjust: 100%;
+}
+a { color: var(--foco); }
+:focus-visible { outline: 3px solid var(--foco); outline-offset: 2px; }
+h1, h2, h3 { color: var(--marinho); line-height: 1.2; margin: 0 0 .5em; }
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.3rem; }
+h3 { font-size: 1.1rem; }
+
+.pagina { max-width: 1180px; margin: 0 auto; padding: 16px; }
+.pilha > * + * { margin-top: 12px; }
+.linha { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.grade-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.suave { color: var(--texto-suave); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; }
+
+.botao {
+  min-height: var(--toque); padding: 0 18px; border-radius: var(--raio);
+  border: 2px solid var(--marinho); background: var(--marinho); color: #fff;
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.botao:disabled { opacity: .45; cursor: not-allowed; }
+.botao.secundario { background: var(--superficie); color: var(--marinho); }
+.botao.perigo { background: var(--perigo); border-color: var(--perigo); }
+.botao.pequeno { min-height: 36px; padding: 0 12px; font-size: .95rem; }
+
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo label { font-weight: 600; }
+.campo input, .campo select, .campo textarea {
+  min-height: var(--toque); padding: 8px 12px; border: 2px solid var(--borda); border-radius: var(--raio);
+  font: inherit; background: #fff; color: var(--texto);
+}
+.campo textarea { min-height: 96px; }
+.campo .ajuda { font-size: .9rem; color: var(--texto-suave); }
+.campo .erro { font-size: .9rem; color: var(--perigo); font-weight: 600; }
+
+.aviso { border-radius: var(--raio); padding: 12px 14px; border: 2px solid; }
+.aviso.info { background: var(--info-fundo); border-color: #9db4e0; }
+.aviso.ok { background: var(--ok-fundo); border-color: #8cc79a; }
+.aviso.atencao { background: var(--atencao-fundo); border-color: #e7b65c; }
+.aviso.perigo { background: var(--perigo-fundo); border-color: #e59a92; }
+.aviso strong { display: block; }
+
+/* Olho a operar: sempre por extenso e em destaque (regra 2) */
+.olho-destaque {
+  display: inline-block; padding: 6px 14px; border-radius: 8px;
+  background: var(--marinho); color: #fff; font-weight: 800; letter-spacing: .04em;
+  font-size: 1.35rem; text-transform: uppercase;
+}
+.olho-destaque.grande { font-size: 2rem; padding: 10px 20px; }
+
+.dots { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.dot {
+  width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 1rem; border: 2px solid #000;
+}
+.dot.vermelho { background: var(--dot-vermelho); color: #fff; }
+.dot.amarelo { background: var(--dot-amarelo); color: #000; }
+.dot.rosa { background: var(--dot-rosa); color: #000; }
+.dot.azul { background: var(--dot-azul); color: #fff; }
+.dot.laranja { background: var(--dot-laranja); color: #000; }
+.dot.verde { background: var(--dot-verde); color: #fff; }
+
+.etiqueta-estado {
+  display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .85rem; font-weight: 700;
+  background: var(--info-fundo); color: var(--marinho); border: 1px solid #9db4e0;
+}
+
+@media print {
+  body { background: #fff; font-size: 12pt; }
+  .nao-imprimir { display: none !important; }
+  .pagina { max-width: none; padding: 0; }
+  .cartao { border: 1px solid #000; break-inside: avoid; }
+}
