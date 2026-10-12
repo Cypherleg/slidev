@@ -84,6 +84,11 @@ Observação para o web-apoio: `ImpressaoBranco` só cai para `modelosPadrao()` 
 13. **PIN**: definir exige 6 dígitos (decisão A8) e recusa sequências e dígitos repetidos [S]; a troca aceita 4 a 8 dígitos (o servidor decide). Erro do `ator.pin` nunca derruba a sessão do aparelho.
 14. **Tipo de LIO** na abertura: "monofocal", "torica" ou texto livre ("outra"); compatível com `lioMonofocal`/`lenteTorica` do domínio (comparação normalizada).
 15. Telas do web-apoio e a página do paciente carregadas sob demanda (pacote principal ~420 kB).
+16. **Troca de quem marca recarrega o episódio.** A visão é filtrada pelo papel do ator (permissões e conferência cega): ao trocar o PIN, `useEpisodio` descarta a visão e os rascunhos e busca de novo. Assim nada digitado por uma pessoa é registrado em nome de outra, e a conferente que entra por PIN num tablet onde a concierge estava não herda a visão da concierge. (Defeito encontrado no percurso da sala e corrigido; teste em `telas/episodio/useEpisodio.test.tsx`.)
+17. **Identificação sempre visível sem cobrir o tablet**: o cabeçalho completo fica no topo; ao rolar, aparece uma faixa fixa enxuta (nome completo, nascimento e idade, prontuário, OLHO por extenso, dots com letra, alertas por extenso), logo abaixo do aviso "Marcando como".
+18. **Bloqueio do checklist inteiro** (sem permissão, bloco anterior não concluído, episódio cancelado) aparece uma vez no topo do checklist, não repetido em cada item.
+19. **Ordem (`depoisDe`)**: o item só habilita quando o pré-requisito já está REGISTRADO (e, se for sim/não, com "Sim"), como o servidor exige.
+20. **Hard stops que não se resolvem por texto** (ex.: quarentena, nome da mãe, conduta) mostram um atalho para onde se resolvem (`componentes/episodio/caminhoHardStop.ts`).
 
 ## Lacunas no contrato (para o orquestrador)
 
@@ -97,8 +102,21 @@ Observação para o web-apoio: `ImpressaoBranco` só cai para `modelosPadrao()` 
 8. **`detalhes.hardStops` do erro `hard_stop`** não tem tipo no contrato; a tela aceita lista de `HardStop` ou de códigos.
 9. **Observações do D-2** dependem de existir item de texto no modelo `d2` (não há ação própria para observação livre).
 
+## Verificação de ponta a ponta (servidor local, dados fictícios, Playwright/Chromium)
+
+Rodada contra `dev/servidor.ts` (porta 8790, banco `jornada_dev_webclinico` recriado com a semente do agente api) e o Vite (5180):
+- Entrar (usuário fictício), início, troca por PIN (aviso "Marcando como"), PIN errado sem derrubar a sessão, encerrar PIN.
+- Novo episódio: CPF com cadastro no Datasigh fictício (só os campos devolvidos) e CPF não encontrado (cadastro manual "NÃO CONFERIDO NO DATASIGH"); abertura com OLHO DIREITO, cirurgião, cirurgia, LIO, data sugerida.
+- D-7: seção A (olho dito pelo paciente diferente do pedido gerou ALERTA), seção B (α-bloqueador "usa" e GLP-1 com dose, data e perguntas), comunicação do alerta por telefone.
+- Contato WhatsApp com anuência, "confirmado por resposta do próprio número", prévia dos materiais (texto e destino mascarado, MODO ENSAIO) e envio registrado em ensaio.
+- Lente: plano com sinal ("+21,50 D") e reserva, chegada, checkpoint 1 concluído; conferente por outro login não vê plano nem lote; checkpoint 2 com dioptria diferente → quarentena + hard stop HS1; cirurgião vê o formulário de resolução escrita.
+- Etiquetas: gerar e "Copiar" (área de transferência conferida; `etiqueta.copiada` registrado).
+- Sala, num tablet com login da enfermagem e troca por PIN: Admissão → Sign In (leitura em voz alta; leitor fora da lista do confirmador; confirmador por PIN) → Time Out (leitura cega da LIO da caixa: confere) → Sign Out → Anestesia → Alta; estado final "Alta"; avisos à família gerados em ensaio para admissão, início, fim e alta; "Avisar atraso" bloqueado com o motivo do servidor.
+
 ## Testes
 
 - `componentes/checklist/RenderizadorChecklist.test.tsx` (11): cada tipo de resposta (confirmação, sim/não, opção, múltipla, texto, data, hora, número, olho com "não sabe", medicamento com GLP-1, alergia com reação obrigatória, pessoa), olho por extenso, "não usa"/"sem alergia", ajuda/pendência do POP/autor/hora/fora de hora/correções, faltam em destaque, papéis e `depoisDe`, modo imediato, confirmação não desmarcável, somente leitura, `exigidoQuando`/`exigeSim`/`exigeBlocosConcluidos`/`foraDeHoraApos`.
-- `componentes/identificacao/CabecalhoIdentificacao.test.tsx` (6): dois identificadores, olho por extenso (nunca a sigla), dots com letra e nome acessível, variante sala, alertas por extenso, homônimo, nome parecido, nome da mãe, "NÃO CONFERIDO NO DATASIGH".
+- `componentes/identificacao/CabecalhoIdentificacao.test.tsx` (8, inclui a faixa fixa ao rolar): dois identificadores, olho por extenso (nunca a sigla), dots com letra e nome acessível, variante sala, alertas por extenso, homônimo, nome parecido, nome da mãe, "NÃO CONFERIDO NO DATASIGH".
+- `telas/episodio/useEpisodio.test.tsx` (1): trocar o ator por PIN recarrega a visão.
+- `componentes/episodio/ListaHardStops.test.tsx` (3): como resolver, quem resolve, formulário só para quem tem competência (e quando o servidor permite o código), nenhum botão de "prosseguir".
 - `telas/episodio/Cp2Cego.test.tsx` (4): a tela da conferente não renderiza nenhum valor do plano/chegada (nem foto) mesmo se a visão trouxesse; formulário vazio; envio de `lente.cp2` com valores tipados; sinal obrigatório e formulário limpo após registrar; a concierge vê o plano.
