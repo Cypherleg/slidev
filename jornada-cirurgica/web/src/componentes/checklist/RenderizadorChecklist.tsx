@@ -1,15 +1,16 @@
 // Renderizador GENÉRICO de ModeloChecklist (todas as TipoResposta).
 // - Mostra `ajuda` como informação do serviço, `pendente` como pendência do POP, autor/hora/fora de hora/correções.
-// - Respeita `papeis` (quem responde) e `depoisDe` (ordem obrigatória).
+// - Respeita `papeis` (quem responde), `depoisDe` (ordem obrigatória) e `exigeBlocosConcluidos`.
+// - Mostra `exigidoQuando` (obrigatório só sob condição), `exigeSim` e `foraDeHoraApos` (hora real, regra 5).
 // - Salva por seção (lote) ou item a item (sala): sempre só o que mudou; correção é um novo registro.
 // - Nenhum campo em branco: destaca o que falta (`BlocoVisao.faltam`).
 import { useMemo, useState } from 'react'
-import type { BlocoVisao, ItemModelo, ModeloChecklist, Papel, RespostaAtual, SecaoModelo, ValorResposta } from '@dominio/tipos.ts'
+import type { BlocoVisao, CondicaoItem, ItemModelo, ModeloChecklist, ModeloId, Papel, RespostaAtual, SecaoModelo, ValorResposta } from '@dominio/tipos.ts'
 import { Aviso, Botao, Selo } from '../base/index.tsx'
 import { formatarDataHora } from '../formato.ts'
 import type { Permissao } from '../permissoes.ts'
 import { temAlgumPapel } from '../permissoes.ts'
-import { ROTULO_HARD_STOP_CURTO, rotuloPapeis } from '../rotulos.ts'
+import { ROTULO_HARD_STOP_CURTO, ROTULO_MODELO, rotuloPapeis } from '../rotulos.ts'
 import { CampoResposta } from './CampoResposta.tsx'
 import type { RespostaParaEnviar } from './valores.ts'
 import { validarValor, valoresIguais } from './valores.ts'
@@ -19,6 +20,28 @@ export type { RespostaParaEnviar } from './valores.ts'
 interface Rascunho {
   valor: ValorResposta | undefined
   observacao: string
+}
+
+/** Contexto do episódio para condições dos itens (exigidoQuando, exigeBlocosConcluidos, foraDeHoraApos). */
+export interface ContextoChecklist {
+  homonimoNoDia?: boolean
+  lenteTorica?: boolean
+  dotD?: boolean
+  blocosConcluidos?: ModeloId[]
+}
+
+const ROTULO_CONTEXTO: Record<'homonimo_no_dia' | 'lente_torica' | 'dot_D', { quando: string; agora: string }> = {
+  homonimo_no_dia: { quando: 'houver homônimo ou nome parecido no dia', agora: 'há homônimo ou nome parecido no dia' },
+  lente_torica: { quando: 'a lente for tórica', agora: 'a lente é tórica' },
+  dot_D: { quando: 'houver dot D (insulina ou sulfonilureia)', agora: 'há dot D (insulina ou sulfonilureia)' },
+}
+
+export interface CondicaoExibida {
+  /** "Responder quando ..." */
+  quando: string
+  /** "Obrigatório: ..." */
+  agora: string
+  ativa: boolean
 }
 
 export interface PropsRenderizador {
@@ -38,6 +61,7 @@ export interface PropsRenderizador {
   idPrefixo?: string
   /** Mostrar só estas seções. */
   secoes?: string[]
+  contexto?: ContextoChecklist
 }
 
 export function idDomItem(prefixo: string, itemId: string): string {
@@ -70,10 +94,28 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
     return !valoresIguais(r.valor, atual?.valor) || (r.observacao ?? '') !== (atual?.observacao ?? '')
   }
 
+  const concluidos = props.contexto?.blocosConcluidos ?? []
+
+  /** Condição de `exigidoQuando`: texto legível e se vale agora (com o que está na tela). */
+  const condicao = (c: CondicaoItem | undefined): CondicaoExibida | null => {
+    if (!c) return null
+    if ('contexto' in c) {
+      const ativa = c.contexto === 'homonimo_no_dia' ? Boolean(props.contexto?.homonimoNoDia) : c.contexto === 'lente_torica' ? Boolean(props.contexto?.lenteTorica) : Boolean(props.contexto?.dotD)
+      return { ...ROTULO_CONTEXTO[c.contexto], ativa }
+    }
+    const alvo = itemPorId(modelo, c.itemId)
+    const v = alvo ? valorExibido(alvo) : undefined
+    const rotulos = c.valores.map(x => alvo?.opcoes?.find(o => o.valor === x)?.rotulo ?? (x === 'sim' ? 'Sim' : x === 'nao' ? 'Não' : x)).join(' ou ')
+    const nome = `"${textos[c.itemId] ?? c.itemId}"`
+    return { quando: `${nome} for ${rotulos}`, agora: `${nome} é ${rotulos}`, ativa: typeof v === 'string' && c.valores.includes(v) }
+  }
+
   const motivoBloqueio = (item: ItemModelo): string | null => {
     if (props.somenteLeitura) return props.somenteLeitura
     if (props.permissao && !props.permissao.permitido) return props.permissao.motivo ?? 'Sem permissão para responder este checklist.'
     if (!temAlgumPapel(props.papeisAtor, item.papeis)) return `Só ${rotuloPapeis(item.papeis)} responde a este item.`
+    const blocosFaltando = (item.exigeBlocosConcluidos ?? []).filter(m => !concluidos.includes(m))
+    if (blocosFaltando.length) return `Só depois de concluir: ${blocosFaltando.map(m => ROTULO_MODELO[m] ?? m).join(', ')}.`
     const antes = (item.depoisDe ?? []).filter(id => {
       if (respostas[id]) return false
       // No modo por seção, um rascunho válido do item anterior no mesmo lote também vale (o servidor confere a ordem).
@@ -149,6 +191,8 @@ export function RenderizadorChecklist(props: PropsRenderizador) {
           valorExibido={valorExibido}
           alterado={alterado}
           motivoBloqueio={motivoBloqueio}
+          condicao={condicao}
+          concluidos={concluidos}
           mudar={mudar}
           enviar={enviar}
         />
@@ -173,6 +217,8 @@ function SecaoChecklist(p: {
   valorExibido: (i: ItemModelo) => ValorResposta | undefined
   alterado: (i: ItemModelo) => boolean
   motivoBloqueio: (i: ItemModelo) => string | null
+  condicao: (c: CondicaoItem | undefined) => CondicaoExibida | null
+  concluidos: ModeloId[]
   mudar: (i: ItemModelo, r: Rascunho | null) => void
   enviar: (chave: string, itens: ItemModelo[]) => Promise<void>
 }) {
@@ -185,7 +231,7 @@ function SecaoChecklist(p: {
   return (
     <fieldset className="secao-checklist pilha" id={idSecao}>
       <legend>
-        {secao.id.length <= 3 ? `${secao.id}. ` : ''}
+        {secao.id.length <= 3 && !secao.titulo.startsWith(`${secao.id}.`) ? `${secao.id}. ` : ''}
         {secao.titulo}
       </legend>
       <p className="suave" style={{ margin: 0 }}>
@@ -206,6 +252,8 @@ function SecaoChecklist(p: {
             alterado={p.alterado(item)}
             bloqueio={motivo}
             erro={erro}
+            condicao={p.condicao(item.exigidoQuando)}
+            foraDeHora={item.foraDeHoraApos && p.concluidos.includes(item.foraDeHoraApos) ? item.foraDeHoraApos : null}
             aoMudar={r => p.mudar(item, r)}
             registrarAgora={
               p.modo === 'imediato'
@@ -249,14 +297,26 @@ export function ItemChecklist(p: {
   alterado: boolean
   bloqueio: string | null
   erro: string | null
+  /** `exigidoQuando`: texto da condição e se vale agora. */
+  condicao?: CondicaoExibida | null
+  /** Bloco já concluído depois do qual a marcação fica fora de hora. */
+  foraDeHora?: ModeloId | null
   aoMudar: (r: Rascunho | null) => void
   registrarAgora?: { aoRegistrar: () => void; registrando: boolean }
 }) {
   const { item, resposta } = p
+  const obrigatorioAgora = item.obrigatorio || Boolean(p.condicao?.ativa)
   const [verObs, setVerObs] = useState(Boolean(resposta?.observacao))
   const idTexto = `${p.idDom}-texto`
   const desabilitado = Boolean(p.bloqueio)
-  const classes = ['item-checklist', p.falta ? 'falta' : '', p.alterado ? 'alterado' : '', resposta && !p.alterado ? 'respondido' : '', desabilitado ? 'desabilitado' : '']
+  const classes = [
+    'item-checklist',
+    p.falta ? 'falta' : '',
+    p.alterado ? 'alterado' : '',
+    resposta && !p.alterado ? 'respondido' : '',
+    desabilitado ? 'desabilitado' : '',
+    p.condicao && !p.condicao.ativa && !resposta && !p.alterado ? 'condicional-inativo' : '',
+  ]
     .filter(Boolean)
     .join(' ')
   const observacao = p.rascunho?.observacao ?? resposta?.observacao ?? ''
@@ -272,7 +332,7 @@ export function ItemChecklist(p: {
       <div className="linha" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <span className="texto-item" id={idTexto}>
           {item.texto}
-          {item.obrigatorio && <span className="obrigatorio"> (obrigatório)</span>}
+          {obrigatorioAgora && <span className="obrigatorio"> (obrigatório)</span>}
         </span>
         <span className="linha" style={{ gap: 6 }}>
           {p.falta && <Selo tipo="perigo">Falta responder</Selo>}
@@ -280,6 +340,26 @@ export function ItemChecklist(p: {
           {item.hardStop && <Selo tipo="perigo" titulo={item.hardStop}>Hard stop: {ROTULO_HARD_STOP_CURTO[item.hardStop] ?? item.hardStop}</Selo>}
         </span>
       </div>
+      {p.condicao && (
+        <p className="suave" style={{ margin: 0 }}>
+          {p.condicao.ativa ? `Obrigatório: ${p.condicao.agora}.` : `Responder quando ${p.condicao.quando}.`}
+        </p>
+      )}
+      {item.exigeSim && (
+        <p className="suave" style={{ margin: 0 }}>
+          Conferência: o bloco só é concluído com a resposta Sim.
+        </p>
+      )}
+      {item.exigeSim && p.valor === 'nao' && (
+        <p className="info-alerta" role="alert" style={{ margin: 0 }}>
+          Resposta Não: o bloco não pode ser concluído até a situação ser resolvida por quem tem competência.
+        </p>
+      )}
+      {p.foraDeHora && (
+        <p style={{ margin: 0 }}>
+          <Selo tipo="atencao">Será registrado FORA DE HORA</Selo> <span className="suave">({ROTULO_MODELO[p.foraDeHora] ?? p.foraDeHora} já concluído; fica o horário real)</span>
+        </p>
+      )}
       {item.pendente && (
         <p className="pendencia-pop" style={{ margin: 0 }}>
           <Selo tipo="pop">Pendência do POP</Selo> {item.pendente}

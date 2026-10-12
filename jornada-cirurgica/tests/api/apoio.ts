@@ -30,6 +30,7 @@ import {
   type FetchLike,
 } from '../../supabase/functions/_shared/api/index.ts'
 import { arquivosMigration, criarBancoTeste, type BancoTeste } from '../apoio/banco.ts'
+import { roteiro, type Chamar } from '../../dev/roteiro.ts'
 
 export const SEGREDO_DEV = 'segredo-dev-somente-testes-0123456789'
 export const PIN = '135790'
@@ -196,10 +197,12 @@ export interface Ambiente {
 
 export const APARELHO = 'aparelho-teste-0001'
 
-export async function criarAmbiente(opcoes: { env?: Record<string, string>; datasigh?: ReturnType<typeof datasighFalso>; semModelos?: boolean } = {}): Promise<Ambiente> {
+export async function criarAmbiente(
+  opcoes: { env?: Record<string, string>; datasigh?: ReturnType<typeof datasighFalso>; semModelos?: boolean; configExtra?: Partial<ConfigApi> } = {},
+): Promise<Ambiente> {
   const banco = await criarBancoTeste()
   const env = envTeste(opcoes.env)
-  const config = lerConfig(n => env[n])
+  const config: ConfigApi = { ...lerConfig(n => env[n]), ...opcoes.configExtra }
   const logger = loggerCapturado()
   const armazenamento = criarArmazenamentoLocal({ segredo: SEGREDO_DEV })
   const datasigh = opcoes.datasigh ?? datasighFalso({})
@@ -288,4 +291,10 @@ export async function despejoBanco(banco: BancoTeste): Promise<string> {
     tudo += JSON.stringify(linhas)
   }
   return tudo
+}
+
+/** Roteiro de episódio (dev/roteiro.ts) com a equipe de teste. */
+export function roteiroTeste(amb: Ambiente) {
+  const chamar: Chamar = (quem, acao, dados, ator) => amb.ok(quem, acao, dados, { ator })
+  return roteiro(chamar, U, (sessao, alvo) => amb.pin(sessao as UsuarioTeste, alvo as UsuarioTeste))
 }

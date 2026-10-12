@@ -1,4 +1,5 @@
 // Casca + roteador (react-router v7). A página do paciente (/p/:token) fica fora da casca e sem login.
+import { lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { BrowserRouter, Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 import { Aviso, Botao, Carregando, Cartao } from '../componentes/base/index.tsx'
@@ -9,18 +10,34 @@ import Episodio from '../telas/episodio/Episodio.tsx'
 import NovoEpisodio from '../telas/episodio/NovoEpisodio.tsx'
 import ListaDia from '../telas/dia/ListaDia.tsx'
 import Sala from '../telas/dia/Sala.tsx'
-import Gestao from '../telas/gestao/Gestao.tsx'
-import ImpressaoBranco from '../telas/impressao/ImpressaoBranco.tsx'
-import ImpressaoEpisodio from '../telas/impressao/ImpressaoEpisodio.tsx'
 import Inicio from '../telas/inicio/Inicio.tsx'
-import PaginaPaciente from '../telas/paciente/PaginaPaciente.tsx'
-import Pendencias from '../telas/pendencias/Pendencias.tsx'
-import ResumoVespera from '../telas/resumo/ResumoVespera.tsx'
 import Casca from './Casca.tsx'
 import Entrar from './Entrar.tsx'
 import { ProvedorNotificacoes } from './notificacoes.tsx'
 import { ROTAS_CLINICO } from './rotasClinico.ts'
 import { ProvedorSessao, useSessao } from './sessao.tsx'
+
+// Telas carregadas sob demanda (pacote menor no tablet; a página do paciente não carrega a interface da equipe).
+const PaginaPaciente = lazy(() => import('../telas/paciente/PaginaPaciente.tsx'))
+const Gestao = lazy(() => import('../telas/gestao/Gestao.tsx'))
+const ImpressaoEpisodio = lazy(() => import('../telas/impressao/ImpressaoEpisodio.tsx'))
+const ImpressaoBranco = lazy(() => import('../telas/impressao/ImpressaoBranco.tsx'))
+const ResumoVespera = lazy(() => import('../telas/resumo/ResumoVespera.tsx'))
+const Pendencias = lazy(() => import('../telas/pendencias/Pendencias.tsx'))
+
+function SobDemanda(props: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <main className="pagina">
+          <Carregando />
+        </main>
+      }
+    >
+      {props.children}
+    </Suspense>
+  )
+}
 
 function ComSessao() {
   return (
@@ -84,7 +101,14 @@ export default function App() {
     <BrowserRouter>
       <ProvedorNotificacoes>
         <Routes>
-          <Route path={PADROES.paginaPaciente} element={<PaginaPaciente />} />
+          <Route
+            path={PADROES.paginaPaciente}
+            element={
+              <SobDemanda>
+                <PaginaPaciente />
+              </SobDemanda>
+            }
+          />
           <Route element={<ComSessao />}>
             <Route path={PADROES.entrar} element={<Entrar />} />
             <Route
@@ -101,11 +125,46 @@ export default function App() {
               <Route path="/dia/hoje" element={<Navigate to={ROTAS.dia(hojeLocal())} replace />} />
               <Route path={PADROES.dia} element={<ListaDia />} />
               <Route path={PADROES.sala} element={<Sala />} />
-              <Route path={PADROES.pendencias} element={<Pendencias />} />
-              <Route path={PADROES.vespera} element={<ResumoVespera />} />
-              <Route path={PADROES.gestao} element={<Gestao />} />
-              <Route path={PADROES.impressaoEpisodio} element={<ImpressaoEpisodio />} />
-              <Route path={PADROES.impressaoBranco} element={<ImpressaoBranco />} />
+              <Route
+                path={PADROES.pendencias}
+                element={
+                  <SobDemanda>
+                    <Pendencias />
+                  </SobDemanda>
+                }
+              />
+              <Route
+                path={PADROES.vespera}
+                element={
+                  <SobDemanda>
+                    <ResumoVespera />
+                  </SobDemanda>
+                }
+              />
+              <Route
+                path={PADROES.gestao}
+                element={
+                  <SobDemanda>
+                    <Gestao />
+                  </SobDemanda>
+                }
+              />
+              <Route
+                path={PADROES.impressaoEpisodio}
+                element={
+                  <SobDemanda>
+                    <ImpressaoEpisodio />
+                  </SobDemanda>
+                }
+              />
+              <Route
+                path={PADROES.impressaoBranco}
+                element={
+                  <SobDemanda>
+                    <ImpressaoBranco />
+                  </SobDemanda>
+                }
+              />
               <Route path={ROTAS_CLINICO.meuPin} element={<MeuPin />} />
               <Route path="*" element={<NaoEncontrada />} />
             </Route>

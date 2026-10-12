@@ -1,6 +1,8 @@
 // Peças comuns dos painéis do episódio.
 import type { EpisodioVisao, ModeloId, Papel } from '@dominio/tipos.ts'
+import { ORDEM_MODELOS } from '@dominio/tipos.ts'
 import { Aviso, Botao } from '../../../componentes/base/index.tsx'
+import type { ContextoChecklist } from '../../../componentes/checklist/RenderizadorChecklist.tsx'
 import { RenderizadorChecklist } from '../../../componentes/checklist/RenderizadorChecklist.tsx'
 import { ConclusaoBloco, SeloSituacao } from '../../../componentes/episodio/SituacaoBloco.tsx'
 import { permissaoConcluir, permissaoResponder } from '../../../componentes/permissoes.ts'
@@ -16,6 +18,17 @@ export interface PropsPainel {
 export function motivoEncerrado(visao: EpisodioVisao): string | null {
   if (visao.episodio.estado === 'cancelado') return 'Episódio cancelado: nada mais é registrado nele.'
   return null
+}
+
+/** Condições dos itens a partir da visão (mesmas regras do domínio, só para exibir). */
+export function contextoChecklist(visao: EpisodioVisao): ContextoChecklist {
+  const normal = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  return {
+    homonimoNoDia: visao.identificacao.exigeNomeMae,
+    lenteTorica: visao.lente.plano ? visao.lente.plano.torica : normal(visao.episodio.tipoLente).includes('TORIC'),
+    dotD: visao.dots.some(d => d.letra === 'D'),
+    blocosConcluidos: ORDEM_MODELOS.filter(m => visao.blocos[m]?.situacao === 'concluido'),
+  }
 }
 
 /** Checklist de um modelo + botão de concluir o bloco. */
@@ -47,6 +60,7 @@ export function ChecklistDoBloco(props: PropsPainel & { modelo: ModeloId; modo?:
         permissao={permissaoResponder(visao, papeis, m)}
         somenteLeitura={motivoEncerrado(visao)}
         modo={props.modo}
+        contexto={contextoChecklist(visao)}
         aoSalvar={respostas => ctl.executar('checklist.responder', { modelo, respostas }, 'Respostas registradas')}
       />
       {!props.semConcluir && <ConcluirBloco {...props} />}

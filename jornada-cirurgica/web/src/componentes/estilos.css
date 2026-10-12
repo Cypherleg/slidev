@@ -162,3 +162,4 @@
 .entrada { min-height: var(--toque); padding: 8px 12px; border: 2px solid var(--borda); border-radius: var(--raio); font: inherit; background: #fff; color: var(--texto); width: 100%; max-width: 640px; }
 textarea.entrada { min-height: 72px; }
 .entrada:disabled, .campo input:disabled, .campo textarea:disabled, .campo select:disabled { background: #eef0f3; color: var(--texto-suave); }
+.item-checklist.condicional-inativo { opacity: .8; border-style: dashed; }

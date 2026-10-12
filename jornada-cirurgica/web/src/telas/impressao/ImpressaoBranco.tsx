@@ -4,15 +4,16 @@
 
 import { Link, useParams, useSearchParams } from 'react-router'
 import type { ModeloChecklist, ModeloId } from '@dominio/tipos.ts'
+import { modelosPadrao } from '@dominio/index.ts'
 import { ORDEM_MODELOS, ROTULO_PAPEL } from '@dominio/tipos.ts'
 import { chamar } from '../../api/cliente.ts'
-import { Carregando } from '../../componentes/base/index.tsx'
+import { Aviso, Carregando } from '../../componentes/base/index.tsx'
 import { ROTAS } from '../../rotas.ts'
-import { useCarga, useTitulo } from '../gestao/comum/carga.ts'
+import { codigoErro, useCarga, useTitulo } from '../gestao/comum/carga.ts'
 import { ErroCarga } from '../gestao/comum/componentes.tsx'
 import { ROTULO_MODELO } from '../gestao/comum/rotulos.ts'
 import { BarraImpressao, Folha, Linha, LinhasAssinatura } from './componentes.tsx'
-import { CabecalhoEmBranco, CampoEmBranco, NotasItem } from './itens.tsx'
+import { CabecalhoEmBranco, CampoEmBranco, NotasItem, tituloSecao } from './itens.tsx'
 import './impressao.css'
 
 const GRUPOS: Record<string, { rotulo: string; modelos: readonly ModeloId[] }> = {
@@ -63,7 +64,9 @@ function FolhaModeloBranco(props: { modelo: ModeloChecklist; quebraAntes: boolea
               Nº
             </th>
             <th scope="col">Item</th>
-            <th scope="col">Registro</th>
+            <th className="col-registro" scope="col">
+              Registro
+            </th>
             <th className="col-rubrica" scope="col">
               Rubrica e hora
             </th>
@@ -72,9 +75,7 @@ function FolhaModeloBranco(props: { modelo: ModeloChecklist; quebraAntes: boolea
         <tbody>
           {modelo.secoes.map(secao => [
             <tr key={`s-${secao.id}`} className="secao">
-              <td colSpan={4}>
-                {secao.id}. {secao.titulo}
-              </td>
+              <td colSpan={4}>{tituloSecao(secao)}</td>
             </tr>,
             ...secao.itens.map(item => {
               n += 1
@@ -107,7 +108,21 @@ export default function ImpressaoBranco() {
   const versao = ids.length === 1 ? busca.get('versao') || undefined : undefined
   useTitulo('Checklist em branco · OFTA VITTA')
 
-  const carga = useCarga(() => Promise.all(ids.map(id => chamar('modelos.obter', versao ? { id, versao } : { id }))), [param, versao])
+  const carga = useCarga(async () => {
+    try {
+      return { modelos: await Promise.all(ids.map(id => chamar('modelos.obter', versao ? { id, versao } : { id }))), embutidos: false }
+    } catch (e) {
+      // Contingência (regra 12): sem servidor, imprime a versão padrão embutida no aplicativo, com aviso.
+      if (codigoErro(e) !== 'indisponivel') throw e
+      let padrao: ReturnType<typeof modelosPadrao>
+      try {
+        padrao = modelosPadrao()
+      } catch {
+        throw e
+      }
+      return { modelos: ids.map(id => padrao[id]), embutidos: true }
+    }
+  }, [param, versao])
 
   const seletor = (
     <nav className="imp-seletor" aria-label="Escolher checklist">
@@ -135,7 +150,19 @@ export default function ImpressaoBranco() {
           <Carregando />
         </div>
       ) : (
-        carga.dados.map((m, i) => <FolhaModeloBranco key={`${m.id}-${m.versao}`} modelo={m} quebraAntes={i > 0} />)
+        <>
+          {carga.dados.embutidos && (
+            <div className="imp-folha nao-imprimir">
+              <Aviso tipo="atencao" titulo="Servidor indisponível: versão embutida no aplicativo.">
+                Estes checklists vêm da versão padrão do POP guardada no aplicativo ({carga.dados.modelos.map(m => m.versao).filter((v, i, a) => a.indexOf(v) === i).join(', ')}). Se a
+                gestora publicou versão mais nova, ela pode ser diferente. A versão sai impressa no cabeçalho de cada folha.
+              </Aviso>
+            </div>
+          )}
+          {carga.dados.modelos.map((m, i) => (
+            <FolhaModeloBranco key={`${m.id}-${m.versao}`} modelo={m} quebraAntes={i > 0} />
+          ))}
+        </>
       )}
     </main>
   )

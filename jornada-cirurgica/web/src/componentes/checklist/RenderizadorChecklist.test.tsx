@@ -128,9 +128,9 @@ describe('RenderizadorChecklist', () => {
     fireEvent.change(ale.getByLabelText(/Descreva a reação/), { target: { value: 'Urticária' } })
 
     const pes = within(itemNaTela('B.pessoa'))
-    fireEvent.change(pes.getByLabelText('Telefone'), { target: { value: '(00) 90000-0000' } })
+    fireEvent.change(pes.getByLabelText(/^Telefone/), { target: { value: '(00) 90000-0000' } })
     expect(botao().disabled).toBe(true)
-    fireEvent.change(pes.getByLabelText('Nome'), { target: { value: 'Acompanhante Fictício' } })
+    fireEvent.change(pes.getByLabelText(/^Nome/), { target: { value: 'Acompanhante Fictício' } })
 
     expect(botao().disabled).toBe(false)
     await act(async () => {
@@ -244,5 +244,49 @@ describe('RenderizadorChecklist', () => {
     render(<RenderizadorChecklist modelo={modelo} papeisAtor={['concierge']} somenteLeitura="Episódio cancelado." aoSalvar={vi.fn()} secoes={['A']} />)
     expect((within(itemNaTela('A.conf')).getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
     expect(screen.getAllByText('Episódio cancelado.').length).toBeGreaterThan(0)
+  })
+
+  it('exigidoQuando, exigeSim, exigeBlocosConcluidos e foraDeHoraApos aparecem por extenso', () => {
+    const m: ModeloChecklist = {
+      ...modelo,
+      secoes: [
+        {
+          id: 'C',
+          titulo: 'C. Condições',
+          itens: [
+            item('C.renal', 'sim_nao', 'Doença renal, diálise, fístula'),
+            item('C.braco', 'opcao', 'Fístula: qual braço', {
+              obrigatorio: false,
+              exigidoQuando: { itemId: 'C.renal', valores: ['sim'] },
+              opcoes: [
+                { valor: 'direito', rotulo: 'Braço direito' },
+                { valor: 'esquerdo', rotulo: 'Braço esquerdo' },
+              ],
+            }),
+            item('C.mae', 'confirmacao', 'Nome da mãe conferido', { obrigatorio: false, exigidoQuando: { contexto: 'homonimo_no_dia' } }),
+            item('C.biometria', 'sim_nao', 'Biometria original presente', { exigeSim: true, hardStop: 'HS2_BIOMETRIA_AUSENTE' }),
+            item('C.liberacao', 'confirmacao', 'Liberação da recuperação', { exigeBlocosConcluidos: ['sign_out'] }),
+            item('C.jejum', 'confirmacao', 'Jejum e medicações', { foraDeHoraApos: 'time_out' }),
+          ],
+        },
+      ],
+    }
+    render(<RenderizadorChecklist modelo={m} papeisAtor={['concierge']} aoSalvar={vi.fn()} contexto={{ homonimoNoDia: true, blocosConcluidos: ['time_out'] }} />)
+    expect(screen.getByText('C. Condições')).toBeTruthy()
+    const braco = within(itemNaTela('C.braco'))
+    expect(braco.getByText(/Responder quando "Doença renal, diálise, fístula" for Sim/)).toBeTruthy()
+    expect(braco.queryByText('(obrigatório)')).toBeNull()
+    fireEvent.click(within(itemNaTela('C.renal')).getByLabelText('Sim'))
+    expect(braco.getByText(/Obrigatório: "Doença renal, diálise, fístula" é Sim/)).toBeTruthy()
+    expect(within(itemNaTela('C.mae')).getByText('Obrigatório: há homônimo ou nome parecido no dia.')).toBeTruthy()
+    const bio = within(itemNaTela('C.biometria'))
+    expect(bio.getByText(/só é concluído com a resposta Sim/)).toBeTruthy()
+    fireEvent.click(bio.getByLabelText('Não'))
+    expect(bio.getByText(/Resposta Não: o bloco não pode ser concluído/)).toBeTruthy()
+    expect(bio.getByText(/Hard stop: Biometria original ausente/)).toBeTruthy()
+    const lib = within(itemNaTela('C.liberacao'))
+    expect((lib.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+    expect(lib.getByText('Só depois de concluir: Sign Out.')).toBeTruthy()
+    expect(within(itemNaTela('C.jejum')).getByText('Será registrado FORA DE HORA')).toBeTruthy()
   })
 })

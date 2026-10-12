@@ -92,7 +92,7 @@ describe('ResumoVespera', () => {
     expect(within(linhas[1]).getByText('HOMÔNIMO OU NOME PARECIDO')).toBeTruthy()
     expect(within(linhas[1]).getByText('1 HARD STOP')).toBeTruthy()
     expect(within(linhas[1]).getByLabelText('S: Sangramento')).toBeTruthy()
-    expect(within(linhas[1]).getByRole('link', { name: 'Abrir episódio' }).getAttribute('href')).toBe('/episodio/ep-2')
+    expect(within(linhas[1]).getByRole('link', { name: 'Abrir episódio: Paciente Teste Beta' }).getAttribute('href')).toBe('/episodio/ep-2')
   })
 
   it('data inválida não chama a API', async () => {

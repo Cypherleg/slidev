@@ -10,6 +10,14 @@ vi.mock('../../api/cliente.ts', () => ({
   chamarPaciente: vi.fn(),
 }))
 
+// Versão padrão embutida (contingência): substitui o stub do domínio por um modelo fictício.
+vi.mock('@dominio/index.ts', async importOriginal => {
+  const original = await importOriginal<typeof import('@dominio/index.ts')>()
+  const { modeloFicticio } = await import('./ficticios.ts')
+  const { ORDEM_MODELOS } = await import('@dominio/tipos.ts')
+  return { ...original, modelosPadrao: () => Object.fromEntries(ORDEM_MODELOS.map(id => [id, modeloFicticio(id, 'embutida/1')])) }
+})
+
 import { chamar } from '../../api/cliente.ts'
 import { episodioFicticio, modeloFicticio } from './ficticios.ts'
 import ImpressaoBranco from './ImpressaoBranco.tsx'
@@ -77,6 +85,21 @@ describe('ImpressaoBranco', () => {
     expect(mockChamar).toHaveBeenCalledTimes(6)
     expect(document.querySelectorAll('.imp-folha')).toHaveLength(6)
     expect(document.querySelectorAll('.imp-folha.imp-quebra')).toHaveLength(5)
+  })
+
+  it('sem servidor, imprime a versão embutida no aplicativo, com aviso', async () => {
+    mockChamar.mockRejectedValue({ erro: { codigo: 'indisponivel', mensagem: 'x' } })
+    renderizar('/impressao/branco/sign_in')
+    expect(await screen.findByText('Servidor indisponível: versão embutida no aplicativo.')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Modelo fictício sign_in' })).toBeTruthy()
+    expect(screen.getAllByText(/embutida\/1/).length).toBeGreaterThan(0)
+  })
+
+  it('outros erros não usam a versão embutida', async () => {
+    mockChamar.mockRejectedValue({ erro: { codigo: 'nao_encontrado', mensagem: 'x' } })
+    renderizar('/impressao/branco/sign_in?versao=inexistente')
+    expect(await screen.findByText('Registro não encontrado.')).toBeTruthy()
+    expect(screen.queryByText('Servidor indisponível: versão embutida no aplicativo.')).toBeNull()
   })
 
   it('modelo desconhecido não chama a API', async () => {

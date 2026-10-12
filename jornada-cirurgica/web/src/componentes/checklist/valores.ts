@@ -1,4 +1,5 @@
 // Validação e descrição de respostas por tipo (exibição). O servidor valida de novo.
+import { D7 } from '@dominio/modelos/ids.ts'
 import type { ItemModelo, ValorAlergia, ValorMedicamento, ValorPessoa, ValorResposta } from '@dominio/tipos.ts'
 import { OLHO_EXTENSO } from '@dominio/tipos.ts'
 import { dataValida, formatarData, formatarNumero } from '../formato.ts'
@@ -17,14 +18,22 @@ export const ROTULO_USO: Record<ValorMedicamento['uso'], string> = {
 
 /**
  * Quais campos extras o item de medicamento pede (POP §1.B).
- * O modelo não marca isso explicitamente: a tela reconhece pelo id e pelo texto do item.
+ * O modelo não marca isso explicitamente: a tela reconhece pelos ids estáveis do domínio (D7.glp1,
+ * D7.insulina) e, para modelos futuros, pelo texto do item.
  */
 export function camposExtrasMedicamento(item: Pick<ItemModelo, 'id' | 'texto'>): { glp1: boolean; insulina: boolean } {
   const t = `${item.id} ${item.texto}`.toLowerCase()
   return {
-    glp1: /glp|tirzepatid|semaglut/.test(t),
-    insulina: /insulin|antidiab/.test(t),
+    glp1: item.id === D7.glp1 || /glp|tirzepatid|semaglut/.test(t),
+    insulina: item.id === D7.insulina || /insulin|antidiab/.test(t),
   }
+}
+
+export const ROTULO_CAMPO_PESSOA: Record<keyof ValorPessoa, string> = {
+  nome: 'Nome',
+  parentesco: 'Parentesco',
+  telefone: 'Telefone',
+  observacao: 'Observação',
 }
 
 function ehObjeto(v: unknown): v is Record<string, unknown> {
@@ -94,7 +103,9 @@ export function validarValor(item: ItemModelo, v: ValorResposta | undefined | nu
     case 'pessoa': {
       if (!ehObjeto(v)) return 'Informe a pessoa.'
       const p = v as unknown as ValorPessoa
-      return p.nome && p.nome.trim() !== '' ? null : 'Informe o nome.'
+      const exigidos = item.camposPessoa?.length ? item.camposPessoa : (['nome'] as (keyof ValorPessoa)[])
+      const faltando = exigidos.filter(c => !p[c] || String(p[c]).trim() === '')
+      return faltando.length ? `Informe: ${faltando.map(c => ROTULO_CAMPO_PESSOA[c].toLowerCase()).join(', ')}.` : null
     }
   }
   return null

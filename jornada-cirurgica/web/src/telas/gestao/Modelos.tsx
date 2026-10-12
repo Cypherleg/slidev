@@ -11,6 +11,7 @@ import { ROTAS } from '../../rotas.ts'
 import { mensagemErro, useCarga } from './comum/carga.ts'
 import { BotaoConfirmar, ErroCarga, Retorno, Selo } from './comum/componentes.tsx'
 import { ROTULO_MODELO, ROTULO_TIPO_RESPOSTA, rotulosPapeis } from './comum/rotulos.ts'
+import { tituloSecao } from '../impressao/itens.tsx'
 import { validarModelo } from './validarModelo.ts'
 
 type Selecao = { id: ModeloId; versao: string } | null
@@ -36,9 +37,7 @@ export function VisaoModelo(props: { modelo: ModeloChecklist }) {
       </div>
       {m.secoes.map(s => (
         <section key={s.id} aria-label={`Seção ${s.id}`}>
-          <h4 style={{ margin: '8px 0 4px' }}>
-            {s.id}. {s.titulo}
-          </h4>
+          <h4 style={{ margin: '8px 0 4px' }}>{tituloSecao(s)}</h4>
           {s.itens.map(it => (
             <div key={it.id} className="item-modelo">
               <strong>{it.texto}</strong>

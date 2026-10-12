@@ -10,8 +10,8 @@ import { rotuloPapeis, rotuloTransicao } from '../rotulos.ts'
 export function ListaHardStops(props: {
   hardStops: HardStop[]
   papeisAtor: readonly Papel[]
-  /** Permissão do servidor para `hardstop.resolver` (se vier). */
-  permissaoServidor?: { permitido: boolean; motivo?: string } | null
+  /** Permissão do servidor para `hardstop.resolver` deste código (chave `hardstop.resolver:<codigo>`), se vier. */
+  permissaoPara?: (codigo: CodigoHardStop) => { permitido: boolean; motivo?: string } | null
   aoResolver: (codigo: CodigoHardStop, resolucao: string) => Promise<boolean>
   grande?: boolean
 }) {
@@ -22,7 +22,7 @@ export function ListaHardStops(props: {
         {props.hardStops.length === 1 ? 'HARD STOP aberto' : `${props.hardStops.length} HARD STOPS abertos`}: a passagem está bloqueada
       </h2>
       {props.hardStops.map(h => (
-        <ItemHardStop key={h.codigo} h={h} {...props} />
+        <ItemHardStop key={h.codigo} h={h} papeisAtor={props.papeisAtor} permissaoServidor={props.permissaoPara?.(h.codigo) ?? null} aoResolver={props.aoResolver} />
       ))}
     </section>
   )

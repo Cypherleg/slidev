@@ -29,7 +29,7 @@ describe('CabecalhoIdentificacao', () => {
   it('na sala: olho enorme, legenda dos dots e lembrete de verbalizar para todo paciente', () => {
     render(<CabecalhoIdentificacao visao={visaoFicticia({ dots: [] })} variante="sala" />)
     expect(screen.getByText('OLHO ESQUERDO').className).toContain('enorme')
-    expect(screen.getByText(/Ausência de dot não significa ausência de risco/)).toBeTruthy()
+    expect(screen.getAllByText(/Ausência de dot não significa ausência de risco/).length).toBe(2)
     expect(screen.getByText(/Verbalizar alergias, α-bloqueador e anticoagulação para TODO paciente/)).toBeTruthy()
   })
 

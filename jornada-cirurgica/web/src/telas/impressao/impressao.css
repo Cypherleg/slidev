@@ -26,7 +26,7 @@
 .imp-folha h3 { font-size: 11pt; margin: 3mm 0 1.5mm; color: #000; }
 .imp-folha p { margin: 0 0 1.5mm; }
 
-.imp-moldura { width: 100%; border-collapse: collapse; }
+.imp-moldura { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .imp-moldura > thead > tr > td, .imp-moldura > tfoot > tr > td, .imp-moldura > tbody > tr > td { padding: 0; vertical-align: top; }
 .imp-cabecalho-repetido {
   display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2mm 6mm; font-size: 9pt;
@@ -38,7 +38,7 @@
 .imp-lembrete { font-weight: 700; }
 
 /* Identificação */
-.imp-identificacao { display: grid; grid-template-columns: 1fr auto; gap: 3mm 6mm; align-items: start; border: 1.5px solid #000; padding: 3mm; }
+.imp-identificacao { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3mm 6mm; align-items: start; border: 1.5px solid #000; padding: 3mm; }
 .imp-identificacao dl { display: grid; grid-template-columns: max-content 1fr; gap: 1mm 4mm; margin: 0; }
 .imp-identificacao dt { font-weight: 700; }
 .imp-identificacao dd { margin: 0; }
@@ -50,16 +50,18 @@
 .imp-alertas-extenso li { border: 2px solid #000; padding: .5mm 2mm; font-weight: 800; text-transform: uppercase; }
 
 /* Tabelas de itens */
-.imp-tabela { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 1mm 0 2mm; }
-.imp-tabela th, .imp-tabela td { border: 1px solid #000; padding: 1.2mm 1.6mm; text-align: left; vertical-align: top; }
+.imp-tabela { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9.5pt; margin: 1mm 0 2mm; }
+.imp-tabela th, .imp-tabela td { border: 1px solid #000; padding: 1.2mm 1.6mm; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .imp-tabela thead th { background: #eee; font-size: 8.5pt; }
 .imp-tabela tr { break-inside: avoid; page-break-inside: avoid; }
-.imp-tabela .col-caixa { width: 7mm; text-align: center; }
-.imp-tabela .col-rubrica { width: 30mm; }
-.imp-tabela .col-autor { width: 34mm; }
+.imp-tabela .col-caixa { width: 8mm; text-align: center; }
+.imp-tabela .col-registro { width: 64mm; }
+.imp-tabela .col-resposta { width: 52mm; }
+.imp-tabela .col-rubrica { width: 24mm; }
+.imp-tabela .col-autor { width: 28mm; }
 .imp-tabela .secao td { background: #f2f2f2; font-weight: 700; }
 .imp-nota { font-size: 8.5pt; }
-.imp-marcador { font-weight: 800; font-size: 8.5pt; border: 1px solid #000; padding: 0 1mm; margin-left: 1mm; white-space: nowrap; }
+.imp-marcador { font-weight: 800; font-size: 8.5pt; border: 1px solid #000; padding: 0 1mm; margin-left: 1mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .imp-pendente { font-style: italic; font-size: 8.5pt; }
 
 .imp-bloco { break-inside: auto; }
@@ -71,14 +73,14 @@
   display: inline-flex; align-items: center; justify-content: center; width: 4mm; height: 4mm; border: 1.3px solid #000;
   font-size: 8pt; font-weight: 900; line-height: 1; flex: none; vertical-align: middle; background: #fff;
 }
-.imp-opcao { display: inline-flex; align-items: center; gap: 1.5mm; margin-right: 4mm; white-space: nowrap; }
-.imp-linha-campo { display: inline-flex; align-items: flex-end; gap: 1.5mm; margin-right: 4mm; min-width: 30mm; }
-.imp-linha-campo.curta { min-width: 22mm; }
-.imp-linha-campo.media { min-width: 45mm; }
-.imp-linha-campo.longa { min-width: 70mm; display: flex; margin-right: 0; }
+.imp-opcao { display: inline-flex; align-items: center; gap: 1.5mm; margin-right: 3mm; }
+.imp-linha-campo { display: inline-flex; align-items: flex-end; gap: 1.5mm; margin-right: 3mm; min-width: 0; }
+.imp-linha-campo.curta { flex: 0 1 20mm; min-width: 18mm; }
+.imp-linha-campo.media { flex: 1 1 30mm; min-width: 26mm; }
+.imp-linha-campo.longa { flex: 1 1 100%; display: flex; width: 100%; margin-right: 0; }
 .imp-linha-rotulo { font-size: 8.5pt; white-space: nowrap; }
 .imp-linha { flex: 1; border-bottom: 1px solid #000; min-height: 5mm; min-width: 15mm; }
-.imp-campos-branco { display: flex; flex-wrap: wrap; gap: 2mm 0; align-items: flex-end; }
+.imp-campos-branco { display: flex; flex-wrap: wrap; gap: 2mm 0; align-items: flex-end; min-width: 0; }
 
 /* Assinaturas */
 .imp-assinaturas { break-inside: avoid; page-break-inside: avoid; margin-top: 5mm; }

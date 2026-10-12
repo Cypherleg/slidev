@@ -90,8 +90,8 @@ export default function Casca() {
 
   if (!dados) return null
   const papeisLogin = dados.membro.papeis
-  // Navegação: papéis de quem fez o login e de quem marca por PIN.
-  const papeisNav = new Set<Papel>([...papeisLogin, ...(sessao.ator?.papeis ?? [])])
+  // Navegação pelos papéis de quem está marcando (ator do PIN, se houver; senão o login).
+  const papeisNav = new Set<Papel>(sessao.papeis)
   const itens = itensNavegacao().filter(i => !i.papeis || i.papeis.some(p => papeisNav.has(p)))
   const estiloAtor = { '--altura-ator': `${temAtor ? alturaAtor : 0}px` } as CSSProperties
 

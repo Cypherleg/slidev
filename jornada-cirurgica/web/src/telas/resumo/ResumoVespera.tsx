@@ -177,12 +177,16 @@ export default function ResumoVespera() {
             <h2 id="sec-episodios" style={{ margin: 0 }}>
               Episódios do dia
             </h2>
+            <p className="suave" style={{ margin: 0 }}>
+              Dots sempre com letra. Ausência de dot não significa ausência de risco: alergias, α-bloqueador e anticoagulação são verbalizados no Time Out para
+              todo paciente.
+            </p>
             {episodios.length === 0 ? (
               <p>Nenhuma cirurgia agendada para esta data.</p>
             ) : (
               <div className="rolagem-tabela">
                 <table className="tabela">
-                  <caption className="sr-only">Episódios do dia {formatarData(data)}, em ordem</caption>
+                  <caption className="sr-only">Episódios do dia {formatarData(data)}, em ordem; o nome abre o episódio</caption>
                   <thead>
                     <tr>
                       <th scope="col">Ordem</th>
@@ -193,9 +197,6 @@ export default function ResumoVespera() {
                       <th scope="col">Lente</th>
                       <th scope="col">Alertas</th>
                       <th scope="col">Pendências</th>
-                      <th scope="col">
-                        <span className="sr-only">Ação</span>
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -206,7 +207,9 @@ export default function ResumoVespera() {
                           {e.horario ? ` · ${e.horario}` : ''}
                         </td>
                         <td>
-                          <strong>{e.pacienteNome}</strong>
+                          <Link to={ROTAS.episodio(e.episodioId)} aria-label={`Abrir episódio: ${e.pacienteNome}`}>
+                            <strong>{e.pacienteNome}</strong>
+                          </Link>
                           <br />
                           nasc. {formatarData(e.dataNascimento)}
                           {e.homonimoOuParecido && (
@@ -240,7 +243,7 @@ export default function ResumoVespera() {
                               ))}
                             </ul>
                           )}
-                          <Dots dots={e.dots} />
+                          {e.dots.length > 0 && <Dots dots={e.dots} />}
                           {e.alertasSemConduta > 0 && (
                             <>
                               <br />
@@ -258,9 +261,6 @@ export default function ResumoVespera() {
                             </>
                           )}
                           {e.pendencias} {e.pendencias === 1 ? 'pendência' : 'pendências'}
-                        </td>
-                        <td>
-                          <Link to={ROTAS.episodio(e.episodioId)}>Abrir episódio</Link>
                         </td>
                       </tr>
                     ))}

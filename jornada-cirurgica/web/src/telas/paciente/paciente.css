@@ -41,7 +41,8 @@
 .pac-quiz { display: grid; gap: 18px; }
 .pac-pergunta { border: 3px solid #1b2a4a; border-radius: 12px; padding: 12px 14px 14px; margin: 0; }
 .pac-pergunta.sem-resposta { border-color: #b42318; border-style: dashed; }
-.pac-pergunta legend { font-weight: 700; padding: 0 6px; }
+.pac-pergunta legend { float: left; width: 100%; font-weight: 700; padding: 0; margin: 0 0 4px; }
+.pac-pergunta legend + * { clear: both; }
 .pac-numero { display: block; font-size: 1rem; font-weight: 800; letter-spacing: .03em; }
 .pac-opcao {
   display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 8px 12px; margin-top: 8px;

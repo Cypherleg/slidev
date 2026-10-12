@@ -31,7 +31,7 @@ import {
   rotulosPapeis,
 } from '../gestao/comum/rotulos.ts'
 import { BarraImpressao, Caixa, Folha, Linha, LinhasAssinatura } from './componentes.tsx'
-import { CampoEmBranco, NotasItem } from './itens.tsx'
+import { CampoEmBranco, NotasItem, tituloSecao } from './itens.tsx'
 import { formatarResposta } from './resposta.ts'
 import './impressao.css'
 
@@ -100,7 +100,9 @@ function BlocoImpresso(props: { modelo: ModeloChecklist; bloco: BlocoVisao | und
         <thead>
           <tr>
             <th scope="col">Item</th>
-            <th scope="col">Resposta</th>
+            <th className="col-resposta" scope="col">
+              Resposta
+            </th>
             <th className="col-autor" scope="col">
               Quem marcou
             </th>
@@ -112,16 +114,14 @@ function BlocoImpresso(props: { modelo: ModeloChecklist; bloco: BlocoVisao | und
         <tbody>
           {modelo.secoes.map(secao => [
             <tr key={`s-${secao.id}`} className="secao">
-              <td colSpan={4}>
-                {secao.id}. {secao.titulo}
-              </td>
+              <td colSpan={4}>{tituloSecao(secao)}</td>
             </tr>,
             ...secao.itens.map(item => {
               const r = respostas?.[item.id]
               return (
                 <tr key={item.id} data-item={item.id}>
                   <td>
-                    {item.texto} <NotasItem item={item} />
+                    {item.texto} <NotasItem item={item} compacto />
                   </td>
                   <td>
                     {r ? (

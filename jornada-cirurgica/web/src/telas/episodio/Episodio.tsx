@@ -122,7 +122,7 @@ export default function Episodio() {
       <ListaHardStops
         hardStops={visao.hardStops}
         papeisAtor={papeis}
-        permissaoServidor={permissaoDoServidor(visao, 'hardstop.resolver')}
+        permissaoPara={codigo => permissaoDoServidor(visao, 'hardstop.resolver', codigo)}
         aoResolver={(codigo, resolucao) => ctl.executar('hardstop.resolver', { codigo, resolucao }, 'Resolução registrada')}
       />
       <PainelPendencias pendencias={visao.pendencias} aoIr={d => mudarAba(d.aba, d.ancora)} />

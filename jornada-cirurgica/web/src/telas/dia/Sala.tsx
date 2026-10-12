@@ -2,7 +2,7 @@
 // hard stops em destaque, leitura em voz alta no Sign In e no Time Out (quem leu + quem confirmou por PIN),
 // leitura cega da LIO no Time Out, intercorrência, suspender/cancelar, avisos à família, contingência em papel.
 // Nenhum botão de "prosseguir assim mesmo".
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router'
 import type { CausaCancelamento } from '@dominio/index.ts'
@@ -37,6 +37,13 @@ export default function Sala() {
   const sessao = useSessao()
   const ctl = useEpisodio(id)
   const [escolhido, setEscolhido] = useState<ModeloId | null>(null)
+  // Ao concluir o bloco escolhido, volta a seguir o próximo bloco pendente.
+  const situacaoEscolhido = escolhido ? ctl.visao?.blocos[escolhido]?.situacao : undefined
+  const anterior = useRef(situacaoEscolhido)
+  useEffect(() => {
+    if (anterior.current && anterior.current !== 'concluido' && situacaoEscolhido === 'concluido') setEscolhido(null)
+    anterior.current = situacaoEscolhido
+  }, [situacaoEscolhido])
 
   if (ctl.carregando) {
     return (
@@ -71,7 +78,7 @@ export default function Sala() {
         grande
         hardStops={visao.hardStops}
         papeisAtor={sessao.papeis}
-        permissaoServidor={permissaoDoServidor(visao, 'hardstop.resolver')}
+        permissaoPara={codigo => permissaoDoServidor(visao, 'hardstop.resolver', codigo)}
         aoResolver={(codigo, resolucao) => ctl.executar('hardstop.resolver', { codigo, resolucao }, 'Resolução registrada')}
       />
       <nav aria-label="Blocos do dia da cirurgia" className="blocos-sala">
@@ -93,6 +100,7 @@ export default function Sala() {
       <Cartao titulo="Contingência em papel">
         <p style={{ margin: 0 }}>Se o painel cair, a cirurgia segue no papel. Item não conferido não é marcado depois; marcação tardia fica com o horário real e sinalizada.</p>
         <div className="linha">
+          <Link to={ROTAS.episodio(visao.episodio.id, 'd0')}>Abrir o episódio completo</Link>
           <Link to={ROTAS.impressaoEpisodio(visao.episodio.id)}>Imprimir o registro deste episódio</Link>
           {BLOCOS_SALA.map(m => (
             <Link key={m} to={ROTAS.impressaoBranco(m)}>

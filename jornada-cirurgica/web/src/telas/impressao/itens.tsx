@@ -1,6 +1,6 @@
 // Itens de checklist para impressão: área em branco por tipo de resposta, marcadores e cabeçalho em branco.
 
-import type { ItemModelo } from '@dominio/tipos.ts'
+import type { ItemModelo, SecaoModelo } from '@dominio/tipos.ts'
 import { Linha, OpcaoCaixa } from './componentes.tsx'
 
 const CONTEXTO: Record<string, string> = {
@@ -80,7 +80,7 @@ export function CampoEmBranco(props: { item: ItemModelo }) {
 }
 
 /** Marcadores do item: ALERTA, HARD STOP, pendência do POP e ajuda. */
-export function NotasItem(props: { item: ItemModelo }) {
+export function NotasItem(props: { item: ItemModelo; compacto?: boolean }) {
   const { item } = props
   return (
     <>
@@ -97,8 +97,8 @@ export function NotasItem(props: { item: ItemModelo }) {
           (obrigatório{'contexto' in item.exigidoQuando ? ` se ${CONTEXTO[item.exigidoQuando.contexto] ?? item.exigidoQuando.contexto}` : ' conforme a resposta anterior'})
         </span>
       )}
-      {item.ajuda && <span className="imp-nota"> {item.ajuda}</span>}
-      {item.pendente && <span className="imp-pendente"> [Pendente no POP: {item.pendente}]</span>}
+      {item.ajuda && !props.compacto && <span className="imp-nota"> {item.ajuda}</span>}
+      {item.pendente && !props.compacto && <span className="imp-pendente"> [Pendente no POP: {item.pendente}]</span>}
     </>
   )
 }
@@ -123,4 +123,11 @@ export function CabecalhoEmBranco() {
       </div>
     </section>
   )
+}
+
+/** 'A. Identificação' sem repetir a letra quando o título já a traz (ex.: 'A. Identificação e cirurgia'). */
+export function tituloSecao(secao: Pick<SecaoModelo, 'id' | 'titulo'>): string {
+  const t = secao.titulo.trim()
+  const prefixo = new RegExp(`^${secao.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[.)\\s:—-]`, 'i')
+  return prefixo.test(t) ? t : `${secao.id}. ${t}`
 }

@@ -46,6 +46,7 @@
 .erro-campo { display: block; color: var(--perigo); font-weight: 600; font-size: .92rem; margin-top: 4px; }
 .lista-erros { margin: 6px 0 0; padding-left: 20px; }
 .codigo { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92rem; }
+.tabela td.codigo { white-space: nowrap; }
 textarea.codigo { width: 100%; min-height: 320px; padding: 10px; border: 2px solid var(--borda); border-radius: var(--raio); }
 .previa-etiqueta {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background: #fff;

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { ItemModelo, ValorAlergia, ValorMedicamento, ValorPessoa, ValorResposta } from '@dominio/tipos.ts'
 import { EscolhaUnica } from '../base/index.tsx'
 import { formatarNumero, lerNumero } from '../formato.ts'
-import { camposExtrasMedicamento, ROTULO_USO } from './valores.ts'
+import { camposExtrasMedicamento, ROTULO_CAMPO_PESSOA, ROTULO_USO } from './valores.ts'
 
 export interface PropsCampo {
   item: ItemModelo
@@ -308,29 +308,36 @@ function CampoAlergia(p: PropsCampo) {
 
 function CampoPessoa(p: PropsCampo) {
   const pessoa = (typeof p.valor === 'object' && p.valor !== null && !Array.isArray(p.valor) ? p.valor : {}) as Partial<ValorPessoa>
+  const exigidos = p.item.camposPessoa?.length ? p.item.camposPessoa : (['nome'] as (keyof ValorPessoa)[])
   const mudar = (parcial: Partial<ValorPessoa>) => {
     const novo = { ...pessoa, ...parcial }
     const vazio = !novo.nome && !novo.parentesco && !novo.telefone && !novo.observacao
     p.aoMudar(vazio ? undefined : ({ ...novo, nome: novo.nome ?? '' } as ValorPessoa))
   }
+  const campos: { chave: keyof ValorPessoa; tipo: string }[] = [
+    { chave: 'nome', tipo: 'text' },
+    { chave: 'parentesco', tipo: 'text' },
+    { chave: 'telefone', tipo: 'tel' },
+    { chave: 'observacao', tipo: 'text' },
+  ]
   return (
     <div className="subcampos">
-      <div className="campo">
-        <label htmlFor={`${p.idBase}-nome`}>Nome</label>
-        <input id={`${p.idBase}-nome`} type="text" autoComplete="off" value={pessoa.nome ?? ''} disabled={p.desabilitado} onChange={e => mudar({ nome: e.target.value })} />
-      </div>
-      <div className="campo">
-        <label htmlFor={`${p.idBase}-parentesco`}>Parentesco</label>
-        <input id={`${p.idBase}-parentesco`} type="text" autoComplete="off" value={pessoa.parentesco ?? ''} disabled={p.desabilitado} onChange={e => mudar({ parentesco: e.target.value || undefined })} />
-      </div>
-      <div className="campo">
-        <label htmlFor={`${p.idBase}-telefone`}>Telefone</label>
-        <input id={`${p.idBase}-telefone`} type="tel" autoComplete="off" value={pessoa.telefone ?? ''} disabled={p.desabilitado} onChange={e => mudar({ telefone: e.target.value || undefined })} />
-      </div>
-      <div className="campo">
-        <label htmlFor={`${p.idBase}-obs`}>Observação</label>
-        <input id={`${p.idBase}-obs`} type="text" autoComplete="off" value={pessoa.observacao ?? ''} disabled={p.desabilitado} onChange={e => mudar({ observacao: e.target.value || undefined })} />
-      </div>
+      {campos.map(c => (
+        <div className="campo" key={c.chave}>
+          <label htmlFor={`${p.idBase}-${c.chave}`}>
+            {ROTULO_CAMPO_PESSOA[c.chave]}
+            {exigidos.includes(c.chave) && <span className="obrigatorio"> (obrigatório)</span>}
+          </label>
+          <input
+            id={`${p.idBase}-${c.chave}`}
+            type={c.tipo}
+            autoComplete="off"
+            value={pessoa[c.chave] ?? ''}
+            disabled={p.desabilitado}
+            onChange={e => mudar({ [c.chave]: c.chave === 'nome' ? e.target.value : e.target.value || undefined })}
+          />
+        </div>
+      ))}
     </div>
   )
 }
