@@ -1,0 +1,71 @@
+/* Página do paciente: celular primeiro, fonte grande, alto contraste (público com catarata).
+   Classes com prefixo pac- para não colidir com a interface da equipe. */
+
+.pac {
+  max-width: 640px; margin: 0 auto; padding: 16px 16px 48px;
+  background: #fff; color: #000; min-height: 100vh;
+  font-size: 1.25rem; line-height: 1.6;
+}
+.pac h1 { font-size: 1.9rem; color: #000; margin: 12px 0 8px; }
+.pac h2 { font-size: 1.5rem; color: #000; margin: 0 0 12px; }
+.pac h3 { font-size: 1.3rem; color: #000; margin: 0 0 8px; }
+.pac p { margin: 0 0 12px; }
+.pac a { color: #0a3d91; text-decoration: underline; text-underline-offset: 3px; }
+.pac :focus-visible { outline: 4px solid #0a3d91; outline-offset: 3px; }
+.pac h2[tabindex='-1']:focus, .pac .pac-resultado:focus { outline: 4px solid #0a3d91; outline-offset: 4px; }
+
+.pac-marca {
+  display: flex; align-items: center; min-height: 48px; border-bottom: 3px solid #1b2a4a;
+  font-weight: 800; letter-spacing: .08em; color: #1b2a4a; font-size: 1.15rem;
+}
+.pac-saudacao { font-size: 1.45rem; font-weight: 700; }
+
+.pac-secao { border-top: 3px solid #1b2a4a; padding-top: 16px; margin-top: 24px; }
+.pac-material { margin: 0 0 20px; }
+
+.pac-video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 8px; margin-bottom: 8px; }
+
+.pac-botao {
+  display: inline-flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 60px; padding: 10px 22px; width: 100%; max-width: 480px;
+  border-radius: 12px; border: 3px solid #1b2a4a; background: #1b2a4a; color: #fff !important;
+  font: inherit; font-weight: 700; text-decoration: none !important; cursor: pointer;
+}
+.pac-botao.secundario { background: #fff; color: #1b2a4a !important; }
+.pac-botao:disabled { opacity: .55; cursor: not-allowed; }
+.pac-acoes { display: grid; gap: 12px; margin-top: 12px; }
+
+.pac-texto ul { padding-left: 1.2em; margin: 0 0 12px; }
+.pac-texto li { margin-bottom: 8px; }
+
+.pac-quiz { display: grid; gap: 18px; }
+.pac-pergunta { border: 3px solid #1b2a4a; border-radius: 12px; padding: 12px 14px 14px; margin: 0; }
+.pac-pergunta.sem-resposta { border-color: #b42318; border-style: dashed; }
+.pac-pergunta legend { font-weight: 700; padding: 0 6px; }
+.pac-numero { display: block; font-size: 1rem; font-weight: 800; letter-spacing: .03em; }
+.pac-opcao {
+  display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 8px 12px; margin-top: 8px;
+  border: 2px solid #5b6474; border-radius: 10px; cursor: pointer; background: #fff;
+}
+.pac-opcao input { width: 30px; height: 30px; flex: none; accent-color: #1b2a4a; margin: 0; }
+.pac-opcao:has(input:checked) { border-width: 3px; border-color: #000; background: #e8eef9; font-weight: 700; }
+.pac-campo { display: grid; gap: 6px; margin-top: 12px; }
+.pac-campo label { font-weight: 700; }
+.pac-campo input {
+  min-height: 56px; padding: 8px 12px; font: inherit; border: 3px solid #5b6474; border-radius: 10px; color: #000; background: #fff;
+}
+.pac-ajuda { font-size: 1.1rem; margin: 0; }
+.pac-erro { color: #8f1b12; font-weight: 700; margin: 4px 0; }
+
+.pac-aviso { border: 3px solid; border-radius: 12px; padding: 12px 14px; margin: 0 0 16px; }
+.pac-aviso p:last-child { margin-bottom: 0; }
+.pac-aviso.ok { border-color: #146c2e; background: #e6f4ea; }
+.pac-aviso.info { border-color: #1b2a4a; background: #e8eef9; }
+.pac-aviso.atencao { border-color: #8a5300; background: #fff4e0; border-style: dashed; }
+.pac-aviso.perigo { border-color: #b42318; background: #fdecea; }
+
+.pac-telefones { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.pac-telefones li { display: grid; }
+.pac-telefones a { font-size: 1.5rem; font-weight: 800; }
+
+.pac-rodape { margin-top: 32px; padding-top: 12px; border-top: 1px solid #5b6474; font-size: 1.05rem; }

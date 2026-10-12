@@ -1,0 +1,109 @@
+/* Impressão / contingência em papel (A4). Prefixo imp- para não colidir com a interface da equipe.
+   Preto e branco: nada depende de cor; caixas e linhas são desenhadas com borda. */
+
+@page {
+  size: A4;
+  margin: 12mm 12mm 12mm 14mm;
+}
+
+.imp-documento { background: #e9edf2; padding: 16px 8px 40px; min-height: 100vh; }
+.imp-barra {
+  max-width: 210mm; margin: 0 auto 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  background: var(--superficie, #fff); border: 1px solid var(--borda, #cfd6e0); border-radius: 10px; padding: 12px;
+}
+.imp-barra .imp-dica { flex-basis: 100%; margin: 0; font-size: .9rem; color: var(--texto-suave, #4b5563); }
+.imp-link-botao { display: inline-flex; align-items: center; text-decoration: none; }
+.imp-seletor { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+.imp-seletor a { font-size: .95rem; }
+.imp-seletor a[aria-current='page'] { font-weight: 800; }
+
+.imp-folha {
+  max-width: 210mm; margin: 0 auto 16px; background: #fff; color: #000; padding: 12mm;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .18); font-size: 10.5pt; line-height: 1.35;
+}
+.imp-folha h1 { font-size: 15pt; margin: 0 0 2mm; color: #000; }
+.imp-folha h2 { font-size: 12.5pt; margin: 5mm 0 2mm; color: #000; border-bottom: 1.5px solid #000; padding-bottom: 1mm; }
+.imp-folha h3 { font-size: 11pt; margin: 3mm 0 1.5mm; color: #000; }
+.imp-folha p { margin: 0 0 1.5mm; }
+
+.imp-moldura { width: 100%; border-collapse: collapse; }
+.imp-moldura > thead > tr > td, .imp-moldura > tfoot > tr > td, .imp-moldura > tbody > tr > td { padding: 0; vertical-align: top; }
+.imp-cabecalho-repetido {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2mm 6mm; font-size: 9pt;
+  border-bottom: 1px solid #000; padding-bottom: 1.5mm; margin-bottom: 3mm;
+}
+.imp-cabecalho-repetido strong { letter-spacing: .06em; }
+.imp-rodape { border-top: 1px solid #000; margin-top: 4mm; padding-top: 1.5mm; font-size: 8.5pt; }
+.imp-rodape p { margin: 0; }
+.imp-lembrete { font-weight: 700; }
+
+/* Identificação */
+.imp-identificacao { display: grid; grid-template-columns: 1fr auto; gap: 3mm 6mm; align-items: start; border: 1.5px solid #000; padding: 3mm; }
+.imp-identificacao dl { display: grid; grid-template-columns: max-content 1fr; gap: 1mm 4mm; margin: 0; }
+.imp-identificacao dt { font-weight: 700; }
+.imp-identificacao dd { margin: 0; }
+.imp-olho {
+  border: 3px solid #000; padding: 2mm 4mm; font-size: 16pt; font-weight: 900; letter-spacing: .05em; text-align: center; text-transform: uppercase;
+}
+.imp-olho small { display: block; font-size: 8pt; font-weight: 700; letter-spacing: 0; }
+.imp-alertas-extenso { display: flex; flex-wrap: wrap; gap: 2mm; margin: 2mm 0 0; padding: 0; list-style: none; }
+.imp-alertas-extenso li { border: 2px solid #000; padding: .5mm 2mm; font-weight: 800; text-transform: uppercase; }
+
+/* Tabelas de itens */
+.imp-tabela { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 1mm 0 2mm; }
+.imp-tabela th, .imp-tabela td { border: 1px solid #000; padding: 1.2mm 1.6mm; text-align: left; vertical-align: top; }
+.imp-tabela thead th { background: #eee; font-size: 8.5pt; }
+.imp-tabela tr { break-inside: avoid; page-break-inside: avoid; }
+.imp-tabela .col-caixa { width: 7mm; text-align: center; }
+.imp-tabela .col-rubrica { width: 30mm; }
+.imp-tabela .col-autor { width: 34mm; }
+.imp-tabela .secao td { background: #f2f2f2; font-weight: 700; }
+.imp-nota { font-size: 8.5pt; }
+.imp-marcador { font-weight: 800; font-size: 8.5pt; border: 1px solid #000; padding: 0 1mm; margin-left: 1mm; white-space: nowrap; }
+.imp-pendente { font-style: italic; font-size: 8.5pt; }
+
+.imp-bloco { break-inside: auto; }
+.imp-bloco-cabeca { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2mm; align-items: baseline; }
+.imp-bloco-situacao { font-size: 9pt; }
+
+/* Caixas e linhas para preencher à mão */
+.imp-caixa {
+  display: inline-flex; align-items: center; justify-content: center; width: 4mm; height: 4mm; border: 1.3px solid #000;
+  font-size: 8pt; font-weight: 900; line-height: 1; flex: none; vertical-align: middle; background: #fff;
+}
+.imp-opcao { display: inline-flex; align-items: center; gap: 1.5mm; margin-right: 4mm; white-space: nowrap; }
+.imp-linha-campo { display: inline-flex; align-items: flex-end; gap: 1.5mm; margin-right: 4mm; min-width: 30mm; }
+.imp-linha-campo.curta { min-width: 22mm; }
+.imp-linha-campo.media { min-width: 45mm; }
+.imp-linha-campo.longa { min-width: 70mm; display: flex; margin-right: 0; }
+.imp-linha-rotulo { font-size: 8.5pt; white-space: nowrap; }
+.imp-linha { flex: 1; border-bottom: 1px solid #000; min-height: 5mm; min-width: 15mm; }
+.imp-campos-branco { display: flex; flex-wrap: wrap; gap: 2mm 0; align-items: flex-end; }
+
+/* Assinaturas */
+.imp-assinaturas { break-inside: avoid; page-break-inside: avoid; margin-top: 5mm; }
+.imp-assinaturas-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm 8mm; }
+.imp-assinatura { display: grid; gap: 2.5mm; }
+.imp-assinatura-papel { font-weight: 800; margin: 0; }
+
+.imp-lista { margin: 0 0 2mm; padding-left: 5mm; }
+.imp-lista li { margin-bottom: 1mm; }
+
+@media print {
+  html, body { background: #fff !important; }
+  .nao-imprimir { display: none !important; }
+  .imp-documento { background: #fff; padding: 0; min-height: 0; }
+  .imp-folha { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+  .imp-quebra { break-before: page; page-break-before: always; }
+  .imp-tabela thead { display: table-header-group; }
+  .imp-moldura > thead { display: table-header-group; }
+  .imp-moldura > tfoot { display: table-footer-group; }
+  h2, h3 { break-after: avoid; page-break-after: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+@media screen and (max-width: 760px) {
+  .imp-folha { padding: 6mm 4mm; }
+  .imp-identificacao { grid-template-columns: 1fr; }
+  .imp-assinaturas-grade { grid-template-columns: 1fr; }
+}

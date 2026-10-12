@@ -1,0 +1,85 @@
+/* Estilos das telas de apoio (gestão, resumo da véspera, pendências). Usa os tokens de base.css. */
+
+.apoio h1 { margin-bottom: .25em; }
+.apoio .subtitulo { margin-top: 0; color: var(--texto-suave); }
+
+/* Selos: sempre com texto; a forma e o peso também mudam (nunca só cor). */
+.selo {
+  display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: .85rem; font-weight: 800;
+  letter-spacing: .02em; border: 2px solid; white-space: nowrap; vertical-align: middle;
+}
+.selo-hard_stop { background: var(--perigo); color: #fff; border-color: #7a160f; text-transform: uppercase; }
+.selo-alerta { background: var(--atencao-fundo); color: #5c3700; border-color: var(--atencao); border-style: dashed; text-transform: uppercase; }
+.selo-pendencia { background: var(--superficie); color: var(--texto); border-color: var(--borda); font-weight: 700; }
+.selo-neutro { background: var(--info-fundo); color: var(--marinho); border-color: #9db4e0; font-weight: 700; }
+.selo-ok { background: var(--ok-fundo); color: var(--ok); border-color: #8cc79a; }
+.selo-atencao { background: var(--atencao-fundo); color: #5c3700; border-color: var(--atencao); border-style: dashed; }
+.selo-perigo { background: var(--perigo-fundo); color: var(--perigo); border-color: var(--perigo); }
+
+/* Tabelas de dados */
+.rolagem-tabela { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tabela { width: 100%; border-collapse: collapse; background: var(--superficie); }
+.tabela caption { text-align: left; font-weight: 700; padding: 6px 0; color: var(--marinho); }
+.tabela th, .tabela td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--borda); }
+.tabela thead th { background: var(--info-fundo); color: var(--marinho); font-size: .92rem; border-bottom: 2px solid var(--marinho); }
+.tabela td.numero, .tabela th.numero { text-align: right; font-variant-numeric: tabular-nums; }
+.tabela tr.inativo td { color: var(--texto-suave); }
+.tabela .acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Submenu da gestão */
+.submenu { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 16px; border-bottom: 2px solid var(--borda); padding-bottom: 8px; }
+.submenu a {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: var(--raio);
+  text-decoration: none; color: var(--marinho); font-weight: 600; border: 2px solid transparent;
+}
+.submenu a:hover { background: var(--info-fundo); }
+.submenu a[aria-current='page'] { border-color: var(--marinho); background: var(--superficie); text-decoration: underline; text-underline-offset: 4px; }
+
+/* Formulários */
+.formulario { display: grid; gap: 12px; }
+.formulario .linha-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.grupo-opcoes { border: 2px solid var(--borda); border-radius: var(--raio); padding: 10px 14px; margin: 0; }
+.grupo-opcoes legend { font-weight: 600; padding: 0 4px; }
+.opcoes-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 12px; }
+.opcao-marcar { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; }
+.opcao-marcar input { width: 22px; height: 22px; flex: none; }
+.erro-campo { display: block; color: var(--perigo); font-weight: 600; font-size: .92rem; margin-top: 4px; }
+.lista-erros { margin: 6px 0 0; padding-left: 20px; }
+.codigo { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92rem; }
+textarea.codigo { width: 100%; min-height: 320px; padding: 10px; border: 2px solid var(--borda); border-radius: var(--raio); }
+.previa-etiqueta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background: #fff;
+  border: 2px dashed var(--texto-suave); border-radius: 6px; padding: 10px; margin: 6px 0 0; min-height: 3em;
+}
+
+/* Filtros */
+.filtros { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.filtros .campo { min-width: 200px; }
+
+/* Contadores em texto */
+.contadores { display: flex; gap: 8px 18px; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; }
+.contadores li strong { font-size: 1.25rem; margin-right: 4px; }
+
+/* Grupos por episódio (pendências) */
+.grupo-episodio { border-left: 6px solid var(--borda); }
+.grupo-episodio.tem-hard-stop { border-left-color: var(--perigo); border-left-style: double; border-left-width: 8px; }
+.lista-pendencias { list-style: none; margin: 0; padding: 0; }
+.lista-pendencias > li { padding: 10px 0; border-top: 1px solid var(--borda); display: grid; gap: 4px; }
+.lista-pendencias > li:first-child { border-top: 0; }
+.pendencia-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .95rem; color: var(--texto-suave); }
+
+.olho-texto { font-weight: 800; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+
+.detalhe-texto summary { cursor: pointer; color: var(--foco); }
+.detalhe-texto p { white-space: pre-wrap; margin: 6px 0 0; }
+
+.modelo-visao .item-modelo { border-top: 1px solid var(--borda); padding: 8px 0; }
+.modelo-visao .item-modelo:first-child { border-top: 0; }
+.modelo-visao dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 4px 0 0; font-size: .95rem; }
+.modelo-visao dt { font-weight: 600; color: var(--texto-suave); }
+.modelo-visao dd { margin: 0; }
+
+@media (max-width: 640px) {
+  .tabela th, .tabela td { padding: 6px; }
+  .filtros .campo { min-width: 100%; }
+}

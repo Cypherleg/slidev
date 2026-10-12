@@ -144,7 +144,23 @@ export interface ItemModelo {
   fonte: string
   /** Trecho entre colchetes no POP = decisão pendente. Exibir como pendência, nunca como regra. */
   pendente?: string
+  // --- Acréscimos opcionais (agente domínio) ---------------------------------
+  /** Item de conferência (sim/não): o bloco só pode ser concluído com a resposta 'sim'. */
+  exigeSim?: boolean
+  /** Obrigatório apenas quando a condição vale (ex.: detalhe "qual braço" quando há fístula). */
+  exigidoQuando?: CondicaoItem
+  /** Tipo 'pessoa': campos que precisam estar preenchidos. */
+  camposPessoa?: (keyof ValorPessoa)[]
+  /** Só pode ser respondido depois que estes blocos estiverem concluídos (ex.: liberação da recuperação). */
+  exigeBlocosConcluidos?: ModeloId[]
+  /** Hora real (regra 5): a resposta é sinalizada fora de hora se este bloco já estiver concluído. */
+  foraDeHoraApos?: ModeloId
 }
+
+/** Condição de obrigatoriedade de um item. */
+export type CondicaoItem =
+  | { itemId: string; valores: string[] } // outro item do mesmo modelo com um destes valores
+  | { contexto: 'homonimo_no_dia' | 'lente_torica' | 'dot_D' }
 
 export interface SecaoModelo {
   id: string // ex.: 'A', 'B'
@@ -445,6 +461,15 @@ export interface LenteVisao {
   timeOutResultado?: { confere: boolean; camposDivergentes: CampoLente[]; em: string; porNome: string }
   quarentena?: { aberta: boolean; etapa: 'cp1' | 'cp2' | 'time_out'; motivo: string; desde: string; resolucao?: { texto: string; cirurgiaoNome: string; em: string; acao: 'manter_plano' | 'novo_plano' } }
   fotoPlanoAnexoId?: string | null // visível só para quem pode ver o plano
+  // --- Acréscimos opcionais (agente domínio) ---------------------------------
+  /** Leitura da caixa no Time Out: só circulante, cirurgião e gestora. */
+  timeOut?: { modelo: string; dioptria: number; cilindro: number | null; eixo: number | null; registradoPor: string; registradoEm: string }
+  /** Como o ciclo atual começou (troca no D0 e resolução de quarentena abrem novo ciclo). */
+  origemCiclo?: 'inicial' | 'novo_plano' | 'manter_plano' | 'troca_d0'
+  /** O que ainda falta no ciclo atual, em ordem. */
+  faltaNoCiclo?: ('plano' | 'chegada' | 'cp1' | 'cp2' | 'time_out')[]
+  /** Histórico de ciclos encerrados (sem valores). */
+  ciclosAnteriores?: { ciclo: number; encerradoEm: string; motivo: string }[]
 }
 
 // ---------------------------------------------------------------------------
