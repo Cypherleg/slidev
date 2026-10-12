@@ -1,0 +1,17 @@
+# Configuração mínima do Supabase CLI para as Edge Functions deste diretório.
+# O projeto de produção é o existente ("Pipeline"); este arquivo NÃO cria nem altera recurso.
+# verify_jwt = false nas três funções (mesmo padrão do painel de pré-consulta):
+#   - jornada-cirurgica valida o JWT no handler, via GET {SUPABASE_URL}/auth/v1/user;
+#   - jornada-paciente não tem login (token longo do link no corpo);
+#   - jornada-envios exige o cabeçalho x-jornada-envios (segredo do agendador).
+# Deploy (só após o "ok" do Dr. Augusto): supabase functions deploy <nome> --project-ref <ref>
+project_id = "jornada-cirurgica"
+
+[functions.jornada-cirurgica]
+verify_jwt = false
+
+[functions.jornada-paciente]
+verify_jwt = false
+
+[functions.jornada-envios]
+verify_jwt = false

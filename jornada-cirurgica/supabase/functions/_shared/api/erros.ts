@@ -98,6 +98,7 @@ export function converterErro(e: unknown): ErroApiHttp {
     switch (e.code) {
       case '23505':
         if (/seq/.test(restricao)) return new ErroApiHttp('conflito_versao')
+        if (/membros_email/.test(restricao)) return new ErroApiHttp('sem_permissao', 'Usuário sem acesso a este painel.')
         return new ErroApiHttp('validacao', 'Registro duplicado.')
       case '40001':
       case '40P01':
@@ -113,7 +114,9 @@ export function converterErro(e: unknown): ErroApiHttp {
       case '22003':
       case '22023':
         return new ErroApiHttp('validacao')
-      case 'P0001': // raise exception em trigger (ex.: tabela que só cresce)
+      case 'JC001': // registro que só cresce
+      case 'JC002': // guarda de membros (papéis, PIN)
+      case 'P0001': // raise exception em trigger
         return new ErroApiHttp('sem_permissao', 'Operação não permitida.')
       default:
         return new ErroApiHttp('indisponivel')

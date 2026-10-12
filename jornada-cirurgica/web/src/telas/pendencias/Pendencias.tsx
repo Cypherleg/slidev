@@ -93,7 +93,10 @@ export default function Pendencias() {
       <form className="filtros cartao" role="search" aria-label="Filtrar pendências" onSubmit={e => e.preventDefault()}>
         <div className="campo">
           <label htmlFor="filtro-data">Data da cirurgia</label>
-          <input id="filtro-data" type="date" value={data} onChange={e => definirFiltro('data', e.target.value)} />
+          <input id="filtro-data" type="date" value={data} onChange={e => definirFiltro('data', e.target.value)} aria-describedby="filtro-data-ajuda" />
+          <span id="filtro-data-ajuda" className="ajuda">
+            Sem data: todos os episódios em aberto.
+          </span>
         </div>
         <div className="campo">
           <label htmlFor="filtro-papel">Papel responsável</label>
@@ -142,7 +145,7 @@ export default function Pendencias() {
             {carga.carregando && <li role="status">Atualizando…</li>}
           </ul>
           <p className="suave">
-            {data ? `Cirurgias de ${formatarData(data)}` : 'Todas as datas'} · {papel ? ROTULO_PAPEL[papel] : 'todos os papéis'}
+            {data ? `Cirurgias de ${formatarData(data)}` : 'Todos os episódios em aberto'} · {papel ? ROTULO_PAPEL[papel] : 'todos os papéis'}
           </p>
           {grupos.length === 0 ? (
             <p role="status">Nada pendente com estes filtros.</p>

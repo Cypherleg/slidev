@@ -110,7 +110,7 @@ export const REGRA_MEMBROS = 'JC002'
 /** Contagem de linhas visíveis de uma tabela do schema. */
 export async function contar(tx: Tx, tabela: string, onde = 'true'): Promise<number> {
   const [linha] = await tx.unsafe(`select count(*)::int as n from jornada_cirurgica.${tabela} where ${onde}`)
-  return (linha as { n: number }).n
+  return (linha as unknown as { n: number }).n
 }
 
 export const TABELAS = [

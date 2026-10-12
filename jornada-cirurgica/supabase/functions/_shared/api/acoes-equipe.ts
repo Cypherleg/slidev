@@ -77,6 +77,7 @@ import {
   mensagemPublica,
   modelosAtivos,
   novoCache,
+  pinHashDoMembro,
   registrarAcesso,
   registrarAparelho,
   S,
@@ -273,7 +274,7 @@ export const acoesEquipe: Impl = {
     })
     const cfg = ctx.deps.config
     return {
-      membro: { id: ctx.membro.id, nome: ctx.membro.nome, papeis: ctx.membro.papeis, temPin: Boolean(ctx.membro.pinHash) },
+      membro: { id: ctx.membro.id, nome: ctx.membro.nome, papeis: ctx.membro.papeis, temPin: ctx.membro.temPin },
       ator: ctx.atorViaPin ? { id: ctx.ator.id, nome: ctx.ator.nome, papeis: ctx.ator.papeis, expiraEm: ctx.atorViaPin.expiraEm } : null,
       modoEnvio: cfg.envioHabilitado ? 'real' : 'ensaio',
       ambiente: cfg.ambiente,
@@ -295,7 +296,8 @@ export const acoesEquipe: Impl = {
       const falhasSessao = await contarAcessos(tx, { recurso: 'pin_falha', desde, sessaoUsuarioId: ctx.membro.id })
       if (falhasAlvo >= cfg.falhasPinPorAlvo || falhasSessao >= cfg.falhasPinPorSessao) return { tipo: 'bloqueado' as const }
       const alvo = await buscarMembro(tx, membroId)
-      const ok = Boolean(alvo && alvo.ativo) && (await verificarHashPin(cfg.segredoAtor, pin, alvo?.pinHash ?? null))
+      const hash = alvo && alvo.ativo ? await pinHashDoMembro(tx, alvo.id) : null
+      const ok = Boolean(alvo && alvo.ativo) && (await verificarHashPin(cfg.segredoAtor, pin, hash))
       const quem = { atorId: ctx.membro.id, sessaoUsuarioId: ctx.membro.id, aparelhoId: ctx.aparelhoId }
       await comoApi(tx, quem)
       if (!ok || !alvo) {
@@ -335,10 +337,11 @@ export const acoesEquipe: Impl = {
       await comoSistema(tx)
       const eu = await buscarMembro(tx, ctx.membro.id)
       if (!eu || !eu.ativo) return 'sem_permissao' as const
-      if (eu.pinHash) {
+      const hashAtual = await pinHashDoMembro(tx, eu.id)
+      if (hashAtual) {
         const falhas = await contarAcessos(tx, { recurso: 'pin_falha', desde, alvo: eu.id })
         if (falhas >= cfg.falhasPinPorAlvo) return 'bloqueado' as const
-        if (!formatoPinValido(pinAtual) || !(await verificarHashPin(cfg.segredoAtor, pinAtual, eu.pinHash))) {
+        if (!formatoPinValido(pinAtual) || !(await verificarHashPin(cfg.segredoAtor, pinAtual, hashAtual))) {
           await comoApi(tx, quem)
           await registrarAcesso(tx, quem, 'pin_falha', { detalhe: { alvo: eu.id } })
           return 'falha' as const
@@ -947,7 +950,7 @@ export const acoesEquipe: Impl = {
       const r = await tx.consulta(
         `select coalesce(c.email, m.email) as email, coalesce(m.nome, c.nome) as nome, coalesce(m.papeis, c.papeis) as papeis,
                 coalesce(m.ativo, false) and coalesce(c.ativo, true) as ativo_membro, c.ativo as ativo_convite,
-                m.user_id, m.pin_hash is not null as tem_pin, (m.user_id is not null) as vinculado
+                m.user_id, coalesce(m.tem_pin, false) as tem_pin, (m.user_id is not null) as vinculado
          from ${S}.convites c full outer join ${S}.membros m on m.email = c.email
          order by 2`,
       )

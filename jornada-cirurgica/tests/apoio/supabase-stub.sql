@@ -1,8 +1,22 @@
 -- Simulação mínima do ambiente Supabase para testes locais (NÃO é aplicada em produção).
-do $$ begin
-  if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
-  if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
-  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+-- Papéis são do cluster: a criação tolera corrida entre arquivos de teste em paralelo.
+do $$
+declare
+  v_papel text;
+begin
+  foreach v_papel in array array['anon', 'authenticated', 'service_role'] loop
+    if not exists (select 1 from pg_roles where rolname = v_papel) then
+      begin
+        if v_papel = 'service_role' then
+          execute format('create role %I nologin bypassrls', v_papel);
+        else
+          execute format('create role %I nologin', v_papel);
+        end if;
+      exception when duplicate_object or unique_violation then
+        null;
+      end;
+    end if;
+  end loop;
 end $$;
 create schema if not exists auth;
 create table if not exists auth.users (

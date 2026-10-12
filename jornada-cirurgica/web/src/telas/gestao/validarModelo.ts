@@ -6,6 +6,8 @@ import { ORDEM_MODELOS, PAPEIS } from '@dominio/tipos.ts'
 
 const TIPOS: readonly TipoResposta[] = ['confirmacao', 'sim_nao', 'opcao', 'multipla', 'texto', 'data', 'hora', 'numero', 'olho', 'medicamento', 'alergia', 'pessoa']
 const NIVEIS = ['alerta', 'sinalizado']
+const CAMPOS_PESSOA = ['nome', 'parentesco', 'telefone', 'observacao']
+const CONTEXTOS = ['homonimo_no_dia', 'lente_torica', 'dot_D']
 
 type Obj = Record<string, unknown>
 const ehObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -25,7 +27,7 @@ export interface ResultadoValidacao {
   erros: string[]
 }
 
-export function validarModelo(texto: string, existentes: readonly { id: string; versao: string }[] = []): ResultadoValidacao {
+export function validarModelo(texto: string): ResultadoValidacao {
   let bruto: unknown
   try {
     bruto = JSON.parse(texto)
@@ -37,8 +39,8 @@ export function validarModelo(texto: string, existentes: readonly { id: string; 
   const erros: string[] = []
 
   if (!(ORDEM_MODELOS as readonly unknown[]).includes(m.id)) erros.push(`"id": deve ser um destes: ${ORDEM_MODELOS.join(', ')}.`)
-  if (!ehTexto(m.versao)) erros.push('"versao": obrigatória (texto), por exemplo "pop-0.4/2".')
-  else if (existentes.some(e => e.id === m.id && e.versao === m.versao)) erros.push(`"versao": a versão "${m.versao}" do modelo "${String(m.id)}" já existe. Use uma versão nova.`)
+  // A versão é atribuída pelo servidor ao publicar (a seguinte à última); o campo, se vier, é ignorado.
+  if (m.versao !== undefined && typeof m.versao !== 'string') erros.push('"versao": se informada, deve ser texto (o servidor atribui a nova versão).')
   if (!ehTexto(m.titulo)) erros.push('"titulo": obrigatório.')
   if (!ehTexto(m.fonte)) erros.push('"fonte": obrigatória (referência no POP).')
   if (m.descricao !== undefined && typeof m.descricao !== 'string') erros.push('"descricao": deve ser texto.')
@@ -97,16 +99,30 @@ export function validarModelo(texto: string, existentes: readonly { id: string; 
         for (const campo of ['ajuda', 'pendente'] as const) {
           if (it[campo] !== undefined && typeof it[campo] !== 'string') erros.push(`${ondeItem}: "${campo}" deve ser texto.`)
         }
-        if (it.permiteNaoSabe !== undefined && typeof it.permiteNaoSabe !== 'boolean') erros.push(`${ondeItem}: "permiteNaoSabe" deve ser true ou false.`)
+        for (const campo of ['permiteNaoSabe', 'exigeSim'] as const) {
+          if (it[campo] !== undefined && typeof it[campo] !== 'boolean') erros.push(`${ondeItem}: "${campo}" deve ser true ou false.`)
+        }
+        if (it.foraDeHoraApos !== undefined && !(ORDEM_MODELOS as readonly unknown[]).includes(it.foraDeHoraApos)) erros.push(`${ondeItem}: "foraDeHoraApos" deve ser um id de modelo.`)
+        if (it.exigeBlocosConcluidos !== undefined && (!Array.isArray(it.exigeBlocosConcluidos) || it.exigeBlocosConcluidos.some(x => !(ORDEM_MODELOS as readonly unknown[]).includes(x))))
+          erros.push(`${ondeItem}: "exigeBlocosConcluidos" deve ser uma lista de ids de modelo.`)
+        if (it.camposPessoa !== undefined && (!Array.isArray(it.camposPessoa) || it.camposPessoa.some(x => !CAMPOS_PESSOA.includes(x as string))))
+          erros.push(`${ondeItem}: "camposPessoa" aceita ${CAMPOS_PESSOA.join(', ')}.`)
+        if (it.exigidoQuando !== undefined) {
+          const c = it.exigidoQuando
+          if (ehObj(c) && 'itemId' in c) {
+            if (!ehTexto(c.itemId) || !Array.isArray(c.valores)) erros.push(`${ondeItem}: "exigidoQuando" precisa de "itemId" e "valores".`)
+            else dependencias.push({ onde: `${ondeItem} (exigidoQuando)`, ids: [c.itemId] })
+          } else if (!(ehObj(c) && CONTEXTOS.includes(c.contexto as string))) erros.push(`${ondeItem}: "exigidoQuando" inválido (use itemId e valores, ou contexto: ${CONTEXTOS.join(', ')}).`)
+        }
         if (it.depoisDe !== undefined) dependencias.push({ onde: ondeItem, ids: it.depoisDe })
       })
     })
   }
   for (const d of dependencias) {
-    if (!Array.isArray(d.ids) || d.ids.some(x => typeof x !== 'string')) erros.push(`${d.onde}: "depoisDe" deve ser uma lista de ids de itens.`)
+    if (!Array.isArray(d.ids) || d.ids.some(x => typeof x !== 'string')) erros.push(`${d.onde}: deve citar ids de itens.`)
     else {
       const faltam = d.ids.filter(x => !idsItens.has(x))
-      if (faltam.length) erros.push(`${d.onde}: "depoisDe" cita item inexistente (${faltam.join(', ')}).`)
+      if (faltam.length) erros.push(`${d.onde}: cita item inexistente (${faltam.join(', ')}).`)
     }
   }
   return erros.length ? { modelo: null, erros } : { modelo: m as unknown as ModeloChecklist, erros: [] }

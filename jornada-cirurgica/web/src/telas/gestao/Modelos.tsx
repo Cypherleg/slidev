@@ -66,6 +66,38 @@ export function VisaoModelo(props: { modelo: ModeloChecklist }) {
                     <dd className="codigo">{it.hardStop}</dd>
                   </>
                 )}
+                {it.exigeSim && (
+                  <>
+                    <dt>Conferência</dt>
+                    <dd>O bloco só é concluído com a resposta "Sim".</dd>
+                  </>
+                )}
+                {it.exigidoQuando && (
+                  <>
+                    <dt>Obrigatório quando</dt>
+                    <dd className="codigo">
+                      {'itemId' in it.exigidoQuando ? `${it.exigidoQuando.itemId} = ${it.exigidoQuando.valores.join(' ou ')}` : it.exigidoQuando.contexto}
+                    </dd>
+                  </>
+                )}
+                {it.camposPessoa?.length ? (
+                  <>
+                    <dt>Campos exigidos</dt>
+                    <dd>{it.camposPessoa.join(', ')}</dd>
+                  </>
+                ) : null}
+                {it.exigeBlocosConcluidos?.length ? (
+                  <>
+                    <dt>Depois dos blocos</dt>
+                    <dd>{it.exigeBlocosConcluidos.map(b => ROTULO_MODELO[b] ?? b).join(', ')}</dd>
+                  </>
+                ) : null}
+                {it.foraDeHoraApos && (
+                  <>
+                    <dt>Hora real</dt>
+                    <dd>Fora de hora se respondido depois de concluído: {ROTULO_MODELO[it.foraDeHoraApos] ?? it.foraDeHoraApos}</dd>
+                  </>
+                )}
                 {it.depoisDe?.length ? (
                   <>
                     <dt>Depois de</dt>
@@ -112,7 +144,7 @@ export default function Modelos() {
   }, [lista.dados])
 
   const conferir = () => {
-    const r = validarModelo(texto, lista.dados ?? [])
+    const r = validarModelo(texto)
     setValidacao({ ...r, texto })
   }
   const validoAtual = validacao && validacao.texto === texto && validacao.modelo ? validacao.modelo : null
@@ -179,7 +211,8 @@ export default function Modelos() {
       <Cartao titulo="Publicar nova versão">
         <Aviso tipo="info" titulo="Cada episódio guarda a versão usada.">
           A nova versão vale para os episódios abertos depois da publicação. Os episódios já abertos continuam com a versão que registraram, e nada publicado é
-          apagado. Mantenha os identificadores (id) dos itens: as regras de alerta e de hard stop dependem deles.
+          apagado. O número da nova versão é atribuído pelo servidor (o seguinte ao da última). Mantenha os identificadores (id) dos itens: as regras de alerta e de
+          hard stop dependem deles.
         </Aviso>
         <div className="campo">
           <label htmlFor="modelo-json">Modelo em JSON</label>
@@ -192,7 +225,7 @@ export default function Modelos() {
             aria-describedby="modelo-json-ajuda"
           />
           <span id="modelo-json-ajuda" className="ajuda">
-            Campos: id, versao (nova), titulo, fonte, papeisConclusao, secoes (id, titulo, itens: id, texto, tipo, obrigatorio, papeis, fonte).
+            Campos: id, titulo, fonte, papeisConclusao, secoes (id, titulo, itens: id, texto, tipo, obrigatorio, papeis, fonte). A versão é atribuída ao publicar.
           </span>
         </div>
         <div className="linha">
@@ -202,7 +235,7 @@ export default function Modelos() {
             titulo={visao.dados ? undefined : 'Abra um modelo em "Ver" para usá-lo como base.'}
             onClick={() => {
               if (!visao.dados) return
-              setTexto(JSON.stringify({ ...visao.dados, versao: '' }, null, 2))
+              setTexto(JSON.stringify(visao.dados, null, 2))
               setValidacao(null)
             }}
           >
@@ -215,7 +248,7 @@ export default function Modelos() {
             <BotaoConfirmar
               tipo="primario"
               rotulo="Publicar"
-              confirmacao={`Confirmar: publicar ${ROTULO_MODELO[validoAtual.id] ?? validoAtual.id}, versão ${validoAtual.versao}`}
+              confirmacao={`Confirmar: publicar nova versão de ${ROTULO_MODELO[validoAtual.id] ?? validoAtual.id}`}
               onConfirmar={async () => {
                 try {
                   const r = await chamar('modelos.publicar', { modelo: validoAtual })
@@ -245,7 +278,7 @@ export default function Modelos() {
               <Aviso tipo="ok" titulo="Estrutura conferida.">
                 {validacao.modelo && (
                   <span>
-                    {ROTULO_MODELO[validacao.modelo.id]}, versão {validacao.modelo.versao}: {validacao.modelo.secoes.length} seção(ões),{' '}
+                    {ROTULO_MODELO[validacao.modelo.id]}: {validacao.modelo.secoes.length} seção(ões),{' '}
                     {validacao.modelo.secoes.reduce((n, s) => n + s.itens.length, 0)} item(ns). O servidor confere de novo ao publicar.
                   </span>
                 )}

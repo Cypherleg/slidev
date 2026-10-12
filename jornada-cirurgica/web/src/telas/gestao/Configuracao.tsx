@@ -90,7 +90,7 @@ function validar(f: Formulario): Erros {
   const erros: Erros = {}
   for (const t of TEMPOS) {
     const v = f.tempos[t.chave].trim()
-    if (v && !(/^\d+$/.test(v) && Number(v) > 0)) erros[`tempo.${t.chave}`] = 'Use minutos inteiros (maior que zero) ou deixe em branco.'
+    if (v && !(/^\d+$/.test(v) && Number(v) > 0 && Number(v) <= 24 * 60)) erros[`tempo.${t.chave}`] = 'Use minutos inteiros (de 1 a 1440) ou deixe em branco.'
   }
   const limiar = lerNumero(f.limiar)
   if (limiar === null || limiar <= 0 || limiar > 1) erros.limiar = 'Informe um número entre 0 e 1 (ex.: 0,85).'

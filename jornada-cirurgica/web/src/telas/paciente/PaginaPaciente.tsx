@@ -423,7 +423,12 @@ export default function PaginaPaciente() {
       const r = await chamarPaciente('quiz.responder', token, quemInstila ? { respostas, quemInstila } : { respostas })
       setSituacao(situacaoDaResposta(r.proximaAcao))
       setFocarResultado(true)
-    } catch {
+    } catch (e) {
+      if (codigoErro(e) === 'validacao') {
+        // O questionário não está mais disponível (ex.: já respondido em outro aparelho): mostra o estado atual.
+        setRodada(r => r + 1)
+        return
+      }
       setErroEnvio('Não foi possível enviar as respostas agora. Verifique a conexão e tente de novo em alguns minutos.')
     } finally {
       setEnviando(false)

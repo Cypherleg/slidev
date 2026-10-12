@@ -11,6 +11,7 @@ import {
   PACIENTE,
   REGRA_MEMBROS,
   RLS_OU_PRIVILEGIO,
+  UNICO_VIOLADO,
   type Tx,
   erroDe,
   semear,
@@ -318,6 +319,32 @@ describe('demais tabelas', () => {
          values ('video_preparo', 2, 'V2', 'video', 'd7', 'paciente')`)).toBe(RLS_OU_PRIVILEGIO)
   })
 
+  it('modelos_checklist: jornada_sistema semeia (publicado_por nulo); jornada_api só com papel gestora; só cresce', async () => {
+    const sis = { papel: 'jornada_sistema' } as const
+    const semeiaSistema = (versao: string, publicadoPor: string | null) => erroDe(banco.sql, null, tx =>
+      tx`insert into jornada_cirurgica.modelos_checklist (id, versao, conteudo, publicado_por)
+         values ('cp1', ${versao}, ${tx.json({ id: 'cp1', secoes: [] } as never)}, ${publicadoPor})
+         on conflict (id, versao) do nothing returning id`, sis)
+    expect(await semeiaSistema('pop-0.4/1', null)).toBeNull()
+    // Sem informar publicado_por: o padrão (ator_id() sem ator) também é nulo.
+    expect(await erroDe(banco.sql, null, tx =>
+      tx`insert into jornada_cirurgica.modelos_checklist (id, versao, conteudo) values ('d2', 'pop-0.4/1', '{}')`, sis)).toBeNull()
+    // Autor fixo de sistema ou pessoa: recusado (gravação do sistema é sempre publicado_por nulo).
+    expect(await semeiaSistema('pop-0.4/1', '00000000-0000-4000-8000-000000000000')).toBe(RLS_OU_PRIVILEGIO)
+    expect(await semeiaSistema('pop-0.4/1', M.gestora)).toBe(RLS_OU_PRIVILEGIO)
+    // Versão já publicada não é sobrescrita.
+    expect(await erroDe(banco.sql, null, tx =>
+      tx`insert into jornada_cirurgica.modelos_checklist (id, versao, conteudo) values ('d7', 'teste/1', '{}')`, sis)).toBe(UNICO_VIOLADO)
+    expect(await erroDe(banco.sql, null, tx =>
+      tx`update jornada_cirurgica.modelos_checklist set conteudo = '{}'`, sis)).toBe(RLS_OU_PRIVILEGIO)
+    // jornada_api: membros sem papel gestora não inserem (nem com publicado_por nulo).
+    for (const ator of [M.concierge, M.conferente, M.enfermagem, M.circulante, M.anestesista, M.cirurgiao, M.inativo]) {
+      expect(await erroDe(banco.sql, ator, tx =>
+        tx`insert into jornada_cirurgica.modelos_checklist (id, versao, conteudo, publicado_por) values ('cp1', 'x/1', '{}', null)`), ator)
+        .toBe(RLS_OU_PRIVILEGIO)
+    }
+  })
+
   it('permissoes_evento: ninguém altera a matriz pela API', async () => {
     for (const [ator, papel] of [[M.gestora, 'jornada_api'], [null, 'jornada_sistema']] as const) {
       const op = { papel } as const
@@ -335,6 +362,10 @@ describe('demais tabelas', () => {
          values (${EPISODIO}, ${'1'.repeat(64)}, now() + interval '7 days') returning id`)
     expect(await criar(M.conferente)).toBe(RLS_OU_PRIVILEGIO)
     expect(await criar(M.concierge)).toBeNull()
+    // O token em si (base64url, 43 caracteres) nunca é gravado: só o SHA-256 em hex.
+    expect(await erroDe(banco.sql, M.concierge, tx =>
+      tx`insert into jornada_cirurgica.links_paciente (episodio_id, token_hash, expira_em)
+         values (${EPISODIO}, 'Ab3_-Zz9Ab3_-Zz9Ab3_-Zz9Ab3_-Zz9Ab3_-Zz9Ab3', now() + interval '7 days')`)).toBe(CHECK_VIOLADO)
     const revogar = (ator: string) => tentar(banco.sql, ator, tx =>
       tx`update jornada_cirurgica.links_paciente set revogado_em = now() where episodio_id = ${EPISODIO} returning id`)
     expect((await revogar(M.gestora)).valor).toHaveLength(1)

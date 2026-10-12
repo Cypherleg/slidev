@@ -10,11 +10,15 @@ import { uuid as novoUuid } from './cripto.ts'
 import { camposLogErro, converterErro, erro, ErroApiHttp } from './erros.ts'
 import { loggerConsole } from './logger.ts'
 import { verificarTokenAtor } from './pin.ts'
-import { buscarConvite, buscarMembro, buscarMembroPorEmail, comoSistema, inscreverMembro, S } from './repositorio.ts'
+import { buscarMembro, comoSistema, inscreverPorEmail, S } from './repositorio.ts'
 import type { ContextoReq, DepsApi } from './servico.ts'
 import * as v from './validar.ts'
 
-export type DepsHandler = Omit<DepsApi, 'logger' | 'relogio' | 'gerarId'> & Partial<Pick<DepsApi, 'logger' | 'relogio' | 'gerarId'>>
+export type DepsHandler = Omit<DepsApi, 'logger' | 'relogio' | 'gerarId'> &
+  Partial<Pick<DepsApi, 'logger' | 'relogio' | 'gerarId'>> & {
+    /** Funções servidas por esta instância (padrão: as duas). Cada Edge Function serve só a sua. */
+    funcoes?: Funcao[]
+  }
 
 export type Funcao = 'equipe' | 'paciente'
 
@@ -103,15 +107,9 @@ async function contextoEquipe(deps: DepsApi, req: Request, acao: AcaoEquipe): Pr
 
   const r = await deps.db.transacao(async tx => {
     await comoSistema(tx)
+    // Membro existente ou inscrição pelo convite (e-mail do Auth verificado, nunca do corpo).
     let membro = await buscarMembro(tx, usuario.userId)
-    if (!membro) {
-      // Inscrição: e-mail do Auth verificado, nunca do corpo.
-      const convite = await buscarConvite(tx, usuario.email)
-      if (!convite || !convite.ativo || (convite.vinculadoUserId && convite.vinculadoUserId !== usuario.userId)) return { tipo: 'sem_acesso' as const }
-      if (await buscarMembroPorEmail(tx, usuario.email)) return { tipo: 'sem_acesso' as const }
-      await inscreverMembro(tx, convite, usuario.userId)
-      membro = await buscarMembro(tx, usuario.userId)
-    }
+    if (!membro) membro = await inscreverPorEmail(tx, usuario.userId, usuario.email)
     if (!membro || !membro.ativo) return { tipo: 'sem_acesso' as const }
     let ator = membro
     let atorViaPin: ContextoReq['atorViaPin'] = null
@@ -147,8 +145,10 @@ async function contextoEquipe(deps: DepsApi, req: Request, acao: AcaoEquipe): Pr
 }
 
 export function criarHandler(entrada: DepsHandler): (req: Request) => Promise<Response> {
+  const { funcoes: funcoesServidas, ...resto } = entrada
+  const servidas = new Set<Funcao>(funcoesServidas ?? ['equipe', 'paciente'])
   const deps: DepsApi = {
-    ...entrada,
+    ...resto,
     logger: entrada.logger ?? loggerConsole(),
     relogio: entrada.relogio ?? (() => new Date()),
     gerarId: entrada.gerarId ?? novoUuid,
@@ -170,7 +170,7 @@ export function criarHandler(entrada: DepsHandler): (req: Request) => Promise<Re
       }
       cors = c
       if (req.method === 'OPTIONS') return resposta(204, null, cors)
-      if (!funcao) throw new ErroApiHttp('nao_encontrado', 'Rota não encontrada.')
+      if (!funcao || !servidas.has(funcao)) throw new ErroApiHttp('nao_encontrado', 'Rota não encontrada.')
       if (req.method !== 'POST') throw new ErroApiHttp('validacao', 'Método não permitido.', undefined, 405)
       const tipo = (req.headers.get('content-type') ?? '').toLowerCase()
       if (!tipo.startsWith('application/json')) throw new ErroApiHttp('validacao', 'Envie JSON.', undefined, 415)

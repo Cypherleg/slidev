@@ -48,6 +48,8 @@ const TEACH_BACK: Record<string, string> = {
   inadequado: 'Inadequado',
 }
 const NIVEL: Record<NivelAlerta, string> = { alerta: 'ALERTA', sinalizado: 'Sinalizado' }
+const ORIGEM_CICLO: Record<string, string> = { inicial: 'inicial', novo_plano: 'novo plano após quarentena', manter_plano: 'plano mantido após quarentena', troca_d0: 'troca de LIO no D0' }
+const FALTA_CICLO: Record<string, string> = { plano: 'plano', chegada: 'chegada', cp1: 'checkpoint 1', cp2: 'checkpoint 2', time_out: 'leitura no Time Out' }
 
 const ASSINATURAS_EPISODIO = (['concierge', 'conferente', 'circulante', 'cirurgiao', 'anestesista'] as const).map(p => ROTULO_PAPEL[p])
 
@@ -187,7 +189,18 @@ function Lente(props: { lente: EpisodioVisao['lente'] }) {
       <h2>Lente intraocular (LIO)</h2>
       <p>
         Situação: <strong>{ROTULO_ETAPA_LENTE[l.etapa] ?? l.etapa}</strong> · ciclo {l.ciclo}
+        {l.origemCiclo && l.origemCiclo !== 'inicial' ? ` (${ORIGEM_CICLO[l.origemCiclo] ?? l.origemCiclo})` : ''}
+        {l.faltaNoCiclo?.length ? ` · falta: ${l.faltaNoCiclo.map(f => FALTA_CICLO[f] ?? f).join(', ')}` : ''}
       </p>
+      {l.ciclosAnteriores?.length ? (
+        <ul className="imp-lista">
+          {l.ciclosAnteriores.map(c => (
+            <li key={c.ciclo}>
+              Ciclo {c.ciclo} encerrado em {formatarDataHora(c.encerradoEm)}: {c.motivo}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {l.plano ? (
         <p>
           <strong>Plano</strong> (registrado por {l.plano.registradoPor}, {formatarDataHora(l.plano.registradoEm)}): modelo {l.plano.modelo} · dioptria{' '}
@@ -218,9 +231,17 @@ function Lente(props: { lente: EpisodioVisao['lente'] }) {
           {camposDivergentes(l.cp2Resultado.camposDivergentes)} · {l.cp2Resultado.porNome}, {formatarDataHora(l.cp2Resultado.em)}
         </p>
       )}
+      {l.timeOut && (
+        <p>
+          <strong>Leitura da caixa no Time Out</strong> ({l.timeOut.registradoPor}, {formatarDataHora(l.timeOut.registradoEm)}): modelo {l.timeOut.modelo} · dioptria{' '}
+          {formatarDioptria(l.timeOut.dioptria)}
+          {l.timeOut.cilindro !== null ? ` · cilindro ${formatarDioptria(l.timeOut.cilindro)}` : ''}
+          {l.timeOut.eixo !== null ? ` · eixo ${formatarEixo(l.timeOut.eixo)}` : ''}
+        </p>
+      )}
       {l.timeOutResultado && (
         <p>
-          Leitura da caixa no Time Out: <strong>{l.timeOutResultado.confere ? 'confere' : 'DIVERGE'}</strong> · campos divergentes:{' '}
+          Comparação no Time Out: <strong>{l.timeOutResultado.confere ? 'confere' : 'DIVERGE'}</strong> · campos divergentes:{' '}
           {camposDivergentes(l.timeOutResultado.camposDivergentes)} · {l.timeOutResultado.porNome}, {formatarDataHora(l.timeOutResultado.em)}
         </p>
       )}

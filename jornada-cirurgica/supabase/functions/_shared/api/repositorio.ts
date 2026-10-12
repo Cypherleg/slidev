@@ -75,8 +75,10 @@ export interface MembroDb {
   nome: string
   papeis: Papel[]
   ativo: boolean
-  pinHash: string | null
+  temPin: boolean
 }
+
+const COLS_MEMBRO = 'user_id, email, nome, papeis, ativo, tem_pin'
 
 function linhaMembro(l: Record<string, unknown>): MembroDb {
   return {
@@ -85,18 +87,24 @@ function linhaMembro(l: Record<string, unknown>): MembroDb {
     nome: String(l.nome ?? ''),
     papeis: (l.papeis as Papel[]) ?? [],
     ativo: Boolean(l.ativo),
-    pinHash: textoOuNull(l.pin_hash),
+    temPin: Boolean(l.tem_pin),
   }
 }
 
 export async function buscarMembro(tx: Executor, userId: string): Promise<MembroDb | null> {
-  const r = await tx.consulta(`select user_id, email, nome, papeis, ativo, pin_hash from ${S}.membros where user_id = $1::uuid`, [userId])
+  const r = await tx.consulta(`select ${COLS_MEMBRO} from ${S}.membros where user_id = $1::uuid`, [userId])
   return r[0] ? linhaMembro(r[0]) : null
 }
 
 export async function buscarMembroPorEmail(tx: Executor, email: string): Promise<MembroDb | null> {
-  const r = await tx.consulta(`select user_id, email, nome, papeis, ativo, pin_hash from ${S}.membros where email = $1`, [email])
+  const r = await tx.consulta(`select ${COLS_MEMBRO} from ${S}.membros where email = $1`, [email])
   return r[0] ? linhaMembro(r[0]) : null
+}
+
+/** Hash do PIN: só como jornada_sistema (jornada_api não lê a coluna). */
+export async function pinHashDoMembro(tx: Executor, userId: string): Promise<string | null> {
+  const r = await tx.consulta(`select pin_hash from ${S}.membros where user_id = $1::uuid and ativo`, [userId])
+  return r[0] ? textoOuNull(r[0].pin_hash) : null
 }
 
 export interface ConviteDb {
@@ -114,10 +122,13 @@ export async function buscarConvite(tx: Executor, email: string): Promise<Convit
   return { email: String(l.email), nome: String(l.nome), papeis: l.papeis as Papel[], ativo: Boolean(l.ativo), vinculadoUserId: textoOuNull(l.vinculado_user_id) }
 }
 
-/** Inscrição pelo convite (como jornada_sistema). E-mail vem do Auth verificado. */
-export async function inscreverMembro(tx: Executor, convite: ConviteDb, userId: string): Promise<void> {
-  await tx.consulta(`insert into ${S}.membros (user_id, email, nome, papeis, ativo) values ($1::uuid, $2, $3, $4::text[], true)`, [userId, convite.email, convite.nome, convite.papeis])
-  await tx.consulta(`update ${S}.convites set vinculado_user_id = $1::uuid where email = $2 and vinculado_user_id is null`, [userId, convite.email])
+/**
+ * Inscrição no primeiro acesso (como jornada_sistema), pela função do banco
+ * `inscrever_por_email`: e-mail do Auth verificado, nunca do corpo. Sem convite ativo: null.
+ */
+export async function inscreverPorEmail(tx: Executor, userId: string, email: string): Promise<MembroDb | null> {
+  const r = await tx.consulta(`select ${COLS_MEMBRO} from ${S}.inscrever_por_email($1::uuid, $2)`, [userId, email])
+  return r[0] ? linhaMembro(r[0]) : null
 }
 
 export async function membrosAtivos(tx: Executor): Promise<{ id: string; nome: string; papeis: Papel[] }[]> {
@@ -221,7 +232,9 @@ export async function listarModelos(tx: Executor): Promise<ModeloLinha[]> {
 
 /**
  * Versão ativa de cada modelo (a última publicada). Se a tabela não tiver um modelo,
- * grava a versão de `modelosPadrao()` como jornada_sistema. Deixa o papel em jornada_sistema.
+ * grava a versão de `modelosPadrao()` como jornada_sistema (em savepoint: sem a concessão,
+ * usa o padrão em memória — `carregarModelosVersoes` reconhece a mesma versão).
+ * Deixa o papel em jornada_sistema.
  */
 export async function modelosAtivos(tx: Executor): Promise<Record<ModeloId, ModeloLinha>> {
   await comoSistema(tx)
@@ -234,12 +247,21 @@ export async function modelosAtivos(tx: Executor): Promise<Record<ModeloId, Mode
     for (const id of faltam) {
       const modelo = padrao[id]
       if (!modelo) continue
-      const r = await tx.consulta(
-        `insert into ${S}.modelos_checklist (id, versao, conteudo, publicado_por) values ($1, $2, $3::jsonb, null)
-         on conflict do nothing returning publicado_em`,
-        [id, modelo.versao, modelo],
-      )
-      ativos[id] = { id, versao: modelo.versao, publicadoEm: iso(r[0]?.publicado_em ?? new Date()), conteudo: modelo }
+      let publicadoEm = new Date().toISOString()
+      await tx.consulta('savepoint jc_modelo_padrao')
+      try {
+        const r = await tx.consulta(
+          `insert into ${S}.modelos_checklist (id, versao, conteudo, publicado_por) values ($1, $2, $3::jsonb, null)
+           on conflict do nothing returning publicado_em`,
+          [id, modelo.versao, modelo],
+        )
+        if (r[0]) publicadoEm = iso(r[0].publicado_em)
+        await tx.consulta('release savepoint jc_modelo_padrao')
+      } catch {
+        await tx.consulta('rollback to savepoint jc_modelo_padrao')
+        await comoSistema(tx)
+      }
+      ativos[id] = { id, versao: modelo.versao, publicadoEm, conteudo: modelo }
     }
   }
   return ativos
@@ -263,6 +285,18 @@ export async function carregarModelosVersoes(tx: Executor, versoes: Partial<Reco
     for (const l of r) {
       cache.set(`${l.id}@${l.versao}`, l.conteudo as ModeloChecklist)
       out[l.id as ModeloId] = l.conteudo as ModeloChecklist
+    }
+    // Versão do padrão ainda não gravada na tabela: usa o padrão em memória.
+    const pendentes = faltam.filter(f => !out[f.id as ModeloId])
+    if (pendentes.length) {
+      const padrao = modelosPadrao()
+      for (const f of pendentes) {
+        const m = padrao[f.id as ModeloId]
+        if (m && m.versao === f.versao) {
+          cache.set(`${f.id}@${f.versao}`, m)
+          out[f.id as ModeloId] = m
+        }
+      }
     }
   }
   return out
@@ -720,19 +754,20 @@ export async function atualizarProjecao(
   tx: Executor,
   episodioId: string,
   versaoEsperada: number,
-  novo: { versao: number; estado: EstadoEpisodio; resumo: unknown; agenda?: CamposAgenda | null },
+  novo: { versao: number; estado?: EstadoEpisodio; resumo: unknown; agenda?: CamposAgenda | null },
 ): Promise<void> {
-  const p: unknown[] = [episodioId, versaoEsperada, novo.versao, novo.estado, novo.resumo]
-  let agenda = ''
+  // `estado` ausente: escrita como jornada_sistema (página do paciente), que só pode mudar versao/resumo.
+  const p: unknown[] = [episodioId, versaoEsperada, novo.versao, novo.resumo]
+  const sets = ['versao = $3::int', 'resumo = $4::jsonb', 'atualizado_em = now()']
+  if (novo.estado) {
+    p.push(novo.estado)
+    sets.push(`estado = $${p.length}`)
+  }
   if (novo.agenda) {
     p.push(novo.agenda.dataCirurgia, novo.agenda.horario, novo.agenda.ordem)
-    agenda = `, data_cirurgia = $6::date, horario = $7::time, ordem = $8::int`
+    sets.push(`data_cirurgia = $${p.length - 2}::date`, `horario = $${p.length - 1}::time`, `ordem = $${p.length}::int`)
   }
-  const r = await tx.consulta(
-    `update ${S}.episodios set versao = $3::int, estado = $4, resumo = $5::jsonb${agenda}, atualizado_em = now()
-     where id = $1::uuid and versao = $2::int returning id`,
-    p,
-  )
+  const r = await tx.consulta(`update ${S}.episodios set ${sets.join(', ')} where id = $1::uuid and versao = $2::int returning id`, p)
   if (!r.length) throw erro('conflito_versao')
 }
 

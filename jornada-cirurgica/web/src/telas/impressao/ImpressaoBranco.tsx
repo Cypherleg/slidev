@@ -83,7 +83,7 @@ function FolhaModeloBranco(props: { modelo: ModeloChecklist; quebraAntes: boolea
                   <td className="col-caixa">{n}</td>
                   <td>
                     <span className="imp-item-texto">{item.texto}</span>
-                    {item.obrigatorio ? '' : <span className="imp-nota"> (se aplicável)</span>} <NotasItem item={item} />
+                    {item.obrigatorio || item.exigidoQuando ? '' : <span className="imp-nota"> (se aplicável)</span>} <NotasItem item={item} />
                   </td>
                   <td>
                     <CampoEmBranco item={item} />

@@ -3,6 +3,12 @@
 import type { ItemModelo } from '@dominio/tipos.ts'
 import { Linha, OpcaoCaixa } from './componentes.tsx'
 
+const CONTEXTO: Record<string, string> = {
+  homonimo_no_dia: 'houver homônimo ou nome parecido no dia',
+  lente_torica: 'a lente for tórica',
+  dot_D: 'houver dot D (insulina ou sulfonilureia)',
+}
+
 /** Área de registro em branco, conforme o tipo de resposta do item. */
 export function CampoEmBranco(props: { item: ItemModelo }) {
   const { item } = props
@@ -84,6 +90,13 @@ export function NotasItem(props: { item: ItemModelo }) {
         </span>
       )}
       {item.hardStop && <span className="imp-marcador">HARD STOP</span>}
+      {item.exigeSim && <span className="imp-marcador">SÓ CONCLUI COM "SIM"</span>}
+      {item.exigidoQuando && (
+        <span className="imp-nota">
+          {' '}
+          (obrigatório{'contexto' in item.exigidoQuando ? ` se ${CONTEXTO[item.exigidoQuando.contexto] ?? item.exigidoQuando.contexto}` : ' conforme a resposta anterior'})
+        </span>
+      )}
       {item.ajuda && <span className="imp-nota"> {item.ajuda}</span>}
       {item.pendente && <span className="imp-pendente"> [Pendente no POP: {item.pendente}]</span>}
     </>

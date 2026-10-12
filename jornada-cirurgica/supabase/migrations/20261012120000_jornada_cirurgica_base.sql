@@ -375,7 +375,7 @@ create table if not exists jornada_cirurgica.links_paciente (
   revogado_em  timestamptz null,
   criado_por   uuid not null default jornada_cirurgica.ator_id(),
   constraint links_paciente_token_hash_unico unique (token_hash),
-  constraint links_paciente_token_hash_formato check (length(token_hash) >= 32),
+  constraint links_paciente_token_hash_formato check (token_hash ~ '^[0-9a-f]{64}$'), -- SHA-256 em hex; recusa o token em si
   constraint links_paciente_validade check (expira_em > criado_em)
 );
 comment on column jornada_cirurgica.links_paciente.token_hash is 'SHA-256 do token do link. O token em si nunca é gravado.';

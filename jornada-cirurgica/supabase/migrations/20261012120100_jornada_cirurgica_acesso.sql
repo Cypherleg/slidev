@@ -282,6 +282,15 @@ create policy modelos_checklist_sistema_select on jornada_cirurgica.modelos_chec
   for select to jornada_sistema
   using (true);
 
+-- Semeadura dos modelos padrão (modelosPadrao() do domínio) na primeira execução.
+-- Gravação do sistema = publicado_por NULO (nenhuma pessoa publicou). A tabela continua
+-- "só cresce": a PK (id, versao) impede sobrescrever uma versão já publicada e o trigger
+-- bloqueia UPDATE/DELETE/TRUNCATE.
+drop policy if exists modelos_checklist_sistema_insert on jornada_cirurgica.modelos_checklist;
+create policy modelos_checklist_sistema_insert on jornada_cirurgica.modelos_checklist
+  for insert to jornada_sistema
+  with check (publicado_por is null);
+
 -- -----------------------------------------------------------------------------
 -- config (gestora)
 -- -----------------------------------------------------------------------------
@@ -646,7 +655,8 @@ grant insert on
   jornada_cirurgica.eventos,
   jornada_cirurgica.mensagens_saida_eventos,
   jornada_cirurgica.acessos,
-  jornada_cirurgica.membros
+  jornada_cirurgica.membros,
+  jornada_cirurgica.modelos_checklist
 to jornada_sistema;
 
 grant update (estado, tentativas, provedor_id, ultimo_erro, atualizado_em)

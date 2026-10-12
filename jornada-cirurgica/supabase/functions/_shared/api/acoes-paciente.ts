@@ -87,7 +87,8 @@ async function gravarEventoPaciente(tx: Executor, ctx: ContextoPaciente, entrada
   const eventos = await inserirEventos(tx, [ev], entrada.episodio.versao + 1)
   const nova: EntradaEstado = { ...entrada, episodio: { ...entrada.episodio, versao: entrada.episodio.versao + eventos.length }, eventos: [...entrada.eventos, ...eventos] }
   const estado = montarEstado(nova)
-  await atualizarProjecao(tx, entrada.episodio.id, entrada.episodio.versao, { versao: nova.episodio.versao, estado: estado.estado, resumo: resumoDia(estado, ctx.agora.toISOString()) })
+  // jornada_sistema só atualiza versao/resumo: eventos do paciente não mudam o estado do episódio.
+  await atualizarProjecao(tx, entrada.episodio.id, entrada.episodio.versao, { versao: nova.episodio.versao, resumo: resumoDia(estado, ctx.agora.toISOString()) })
   return nova
 }
 

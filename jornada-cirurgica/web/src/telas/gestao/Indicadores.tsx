@@ -7,7 +7,7 @@ import { Botao, Campo, Carregando, Cartao } from '../../componentes/base/index.t
 import { dataValida, formatarData, hojeLocal } from '../../componentes/formato.ts'
 import { useCarga } from './comum/carga.ts'
 import { ErroCarga, Selo } from './comum/componentes.tsx'
-import { apresentarIndicador } from './indicadores.ts'
+import { apresentarIndicador } from './formatoIndicador.ts'
 
 function inicioDoMes(hoje: string): string {
   return `${hoje.slice(0, 7)}-01`
@@ -103,8 +103,7 @@ export default function Indicadores() {
       </Cartao>
       <Cartao titulo="Indicadores">
         <p className="suave" style={{ margin: 0 }}>
-          Fórmulas e metas da seção 12 do POP. Indicadores que dependem de observação direta ou de fonte fora do painel aparecem como "registro manual". Sem meta de
-          zero para divergências interceptadas: interceptar é a barreira funcionando.
+          Fórmulas e metas da seção 12 do POP. Indicadores que dependem de observação direta ou de fonte fora do painel aparecem como "registro manual".
         </p>
         {carga.erro ? (
           <ErroCarga erro={carga.erro} onTentar={carga.recarregar} />
